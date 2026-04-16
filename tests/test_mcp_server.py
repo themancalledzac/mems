@@ -32,3 +32,29 @@ class TestCreateServer:
         )
         tools = server._tool_manager.list_tools()
         assert len(tools) == 8
+
+
+class TestToolSchemas:
+    def test_user_write_has_required_params(self, tmp_palace, tmp_config):
+        """mempalace_user_write should have hall, content, topic params."""
+        server = create_server(
+            palace_path=str(tmp_palace),
+            config_path=str(tmp_config),
+        )
+        tools = {t.name: t for t in server._tool_manager.list_tools()}
+        write_tool = tools["mempalace_user_write"]
+        schema = write_tool.parameters
+        assert "hall" in schema.get("properties", {})
+        assert "content" in schema.get("properties", {})
+        assert "topic" in schema.get("properties", {})
+
+    def test_memory_sync_has_optional_wing(self, tmp_palace, tmp_config):
+        """memory_sync should have optional wing param."""
+        server = create_server(
+            palace_path=str(tmp_palace),
+            config_path=str(tmp_config),
+        )
+        tools = {t.name: t for t in server._tool_manager.list_tools()}
+        sync_tool = tools["memory_sync"]
+        schema = sync_tool.parameters
+        assert "wing" in schema.get("properties", {})
