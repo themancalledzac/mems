@@ -1,7 +1,7 @@
 """User Wing — persistent user context organized by thought type."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from mempalace.palace import get_collection
 
@@ -121,6 +121,192 @@ class UserWing:
             })
 
         return {"query": query, "results": formatted}
+
+    def summary(self) -> dict:
+        """Synthesize a compact user context summary (~300-500 tokens)."""
+        sections = {}
+        hall_labels = {
+            "goals": "Goals",
+            "decisions": "Recent decisions",
+            "frustrations": "Active frustrations",
+            "discoveries": "Recent discoveries",
+            "questions": "Open questions",
+            "observations": "Observations",
+        }
+
+        has_content = False
+        for hall, label in hall_labels.items():
+            try:
+                results = self.collection.get(
+                    where={"$and": [{"wing": "user"}, {"hall": hall}]},
+                    limit=5,
+                )
+            except Exception:
+                continue
+
+            if results and results.get("documents"):
+                items = results["documents"][:3]
+                sections[label] = "; ".join(items)
+                has_content = True
+
+        if not has_content:
+            return {"text": "", "token_estimate": 0}
+
+        lines = ["## User Context"]
+        for label, content in sections.items():
+            lines.append(f"**{label}:** {content}")
+
+        text = "\n".join(lines)
+        token_estimate = len(text) // 4
+        return {"text": text, "token_estimate": token_estimate}
+
+    def status(self) -> dict:
+        """Hall counts, recent topics, protocol guidance."""
+        halls = {}
+        topics = set()
+        total = 0
+
+        for hall in VALID_HALLS:
+            try:
+                results = self.collection.get(
+                    where={"$and": [{"wing": "user"}, {"hall": hall}]},
+                )
+            except Exception:
+                continue
+
+            count = len(results["ids"]) if results and results.get("ids") else 0
+            if count > 0:
+                halls[hall] = count
+                total += count
+                if results.get("metadatas"):
+                    for meta in results["metadatas"][:10]:
+                        if meta.get("topic"):
+                            topics.add(meta["topic"])
+
+        return {
+            "total_thoughts": total,
+            "halls": halls,
+            "recent_topics": sorted(topics),
+            "guidance": (
+                "Capture user context at session end via mempalace_user_write. "
+                "Call mempalace_user_summary at session start for context."
+            ),
+        }
+
+    def merge_topics(
+        self,
+        source_topic: str,
+        target_topic: str,
+        hall: str | None = None,
+    ) -> dict:
+        """Merge drifted topics — rewrite metadata, deduplicate."""
+        where_conditions = [{"wing": "user"}, {"topic": source_topic}]
+        if hall:
+            where_conditions.append({"hall": hall})
+        where = {"$and": where_conditions}
+
+        try:
+            results = self.collection.get(where=where)
+        except Exception:
+            return {"merged": 0, "deduped": 0, "remaining": 0}
+
+        if not results or not results.get("ids"):
+            return {"merged": 0, "deduped": 0, "remaining": 0}
+
+        merged = 0
+        deduped = 0
+        for i, drawer_id in enumerate(results["ids"]):
+            meta = results["metadatas"][i].copy()
+            content = results["documents"][i]
+
+            dup = self._find_duplicate_in_topic(target_topic, content, meta.get("hall"))
+            if dup:
+                self.collection.delete(ids=[drawer_id])
+                deduped += 1
+            else:
+                meta["topic"] = target_topic
+                self.collection.upsert(
+                    ids=[drawer_id],
+                    documents=[content],
+                    metadatas=[meta],
+                )
+                merged += 1
+
+        remaining = merged
+        return {"merged": merged, "deduped": deduped, "remaining": remaining}
+
+    def prune(
+        self,
+        hall: str | None = None,
+        topic: str | None = None,
+        older_than_days: int = 90,
+        dry_run: bool = True,
+    ) -> dict:
+        """Remove stale/low-value thoughts by age, similarity, or cluster."""
+        where_conditions = [{"wing": "user"}]
+        if hall:
+            where_conditions.append({"hall": hall})
+        if topic:
+            where_conditions.append({"topic": topic})
+        where = {"$and": where_conditions} if len(where_conditions) > 1 else where_conditions[0]
+
+        try:
+            results = self.collection.get(where=where)
+        except Exception:
+            return {"candidates": 0, "pruned": 0}
+
+        if not results or not results.get("ids"):
+            return {"candidates": 0, "pruned": 0}
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        candidates = []
+        for i, drawer_id in enumerate(results["ids"]):
+            meta = results["metadatas"][i]
+            ts_str = meta.get("timestamp", "")
+            try:
+                ts = datetime.fromisoformat(ts_str)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                continue
+            if ts < cutoff:
+                candidates.append(drawer_id)
+
+        if dry_run:
+            return {"candidates": len(candidates), "pruned": 0}
+
+        if candidates:
+            self.collection.delete(ids=candidates)
+
+        return {"candidates": len(candidates), "pruned": len(candidates)}
+
+    def _find_duplicate_in_topic(self, topic: str, content: str, hall: str | None = None) -> dict | None:
+        """Check if near-duplicate exists in the target topic."""
+        where_conditions = [{"wing": "user"}, {"topic": topic}]
+        if hall:
+            where_conditions.append({"hall": hall})
+
+        try:
+            results = self.collection.query(
+                query_texts=[content],
+                n_results=1,
+                where={"$and": where_conditions},
+            )
+        except Exception:
+            return None
+
+        if (
+            not results
+            or not results.get("ids")
+            or not results["ids"][0]
+            or not results.get("distances")
+            or not results["distances"][0]
+        ):
+            return None
+
+        if results["distances"][0][0] < DEDUP_THRESHOLD:
+            return {"id": results["ids"][0][0]}
+        return None
 
     def _find_duplicate(self, hall: str, content: str) -> dict | None:
         """Find a near-duplicate in the same hall. Returns {id, metadata} or None."""
