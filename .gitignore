@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+.env
+*.db
+*.sqlite3
+chroma/
+sync_ledger.json
+.pytest_cache/
