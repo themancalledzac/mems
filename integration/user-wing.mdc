@@ -1,0 +1,27 @@
+---
+description: Capture user thoughts into Memory Palace at session end
+globs:
+alwaysApply: true
+---
+
+# User Wing — Memory Palace
+
+At the end of every session, capture any distinct user thoughts using the `mempalace_user_write` tool.
+
+## Halls
+
+| Hall | When to use |
+|------|------------|
+| `questions` | User is wondering about something |
+| `discoveries` | User learned something new |
+| `frustrations` | User hit a blocker or pain point |
+| `goals` | User stated a short or long-term objective |
+| `decisions` | User made a choice and explained reasoning |
+| `observations` | User noted a pattern, insight, or factoid |
+
+## Protocol
+
+1. Before ending the session, review the conversation for user thoughts
+2. For each distinct thought, call `mempalace_user_write` with the appropriate `hall`, a descriptive `content`, and a short `topic` slug
+3. If the thought relates to a specific codebase, set `source_wing` (e.g., `edens-zac`, `edens-zac-backend`)
+4. Deduplication is automatic — don't worry about repeats

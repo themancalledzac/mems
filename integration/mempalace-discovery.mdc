@@ -1,0 +1,17 @@
+---
+description: Search Memory Palace for context at session start
+globs:
+alwaysApply: true
+---
+
+# Memory Palace Discovery
+
+At the start of every session:
+
+1. Call `mempalace_user_summary` to get user context (goals, frustrations, recent decisions)
+2. When investigating code, use `mempalace_search` to find relevant indexed knowledge across repos
+3. Use `mempalace_user_search` to find prior user thoughts on the current topic
+
+## Cross-repo connections
+
+Use `mempalace_find_tunnels` to discover connections between wings when working across repos.
