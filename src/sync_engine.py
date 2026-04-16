@@ -7,6 +7,9 @@ from pathlib import Path
 
 import yaml
 
+from mempalace.miner import mine, process_file
+from mempalace.palace import get_collection
+
 
 class SyncLedger:
     """Manages sync_ledger.json — tracks per-repo sync state."""
@@ -72,3 +75,116 @@ def get_changed_files(repo_path: str, since_sha: str) -> dict:
         elif status.startswith("D"):
             changes["deleted"].append(filepath)
     return changes
+
+
+class SyncEngine:
+    """Orchestrates multi-repo sync using mempalace mining."""
+
+    def __init__(self, config_path: str, data_path: str):
+        self.config_path = Path(config_path)
+        self.data_path = Path(data_path)
+        self.ledger = SyncLedger(self.data_path / "sync_ledger.json")
+
+        with open(self.config_path / "repos.json") as f:
+            self.repos: dict = json.load(f)
+
+        with open(self.config_path / "mempalace.yaml") as f:
+            self.taxonomy: dict = yaml.safe_load(f)
+
+    def full_sync(self, wing_name: str | None = None):
+        """Run full mine on all repos (or a specific wing)."""
+        targets = (
+            {wing_name: self.repos[wing_name]}
+            if wing_name
+            else self.repos
+        )
+
+        for name, repo_config in targets.items():
+            repo_path = repo_config["path"]
+            try:
+                mine(
+                    project_dir=repo_path,
+                    palace_path=str(self.data_path),
+                    wing_override=name,
+                )
+                head_sha = get_head_sha(repo_path)
+                self.ledger.update(name, {
+                    "repo_path": repo_path,
+                    "last_commit_sha": head_sha,
+                    "last_sync_ts": datetime.now(timezone.utc).isoformat(),
+                    "files_indexed": self._count_files(repo_path),
+                    "status": "synced",
+                })
+            except Exception as e:
+                self.ledger.mark_error(name, repo_path, str(e))
+
+        self.ledger.save()
+
+    def incremental_sync(self, wing_name: str | None = None):
+        """Sync only files changed since last sync."""
+        targets = (
+            {wing_name: self.repos[wing_name]}
+            if wing_name
+            else self.repos
+        )
+
+        for name, repo_config in targets.items():
+            entry = self.ledger.get(name)
+            if not entry or entry.get("status") == "error" or not entry.get("last_commit_sha"):
+                self.full_sync(wing_name=name)
+                continue
+
+            repo_path = repo_config["path"]
+            try:
+                head_sha = get_head_sha(repo_path)
+                if head_sha == entry["last_commit_sha"]:
+                    continue
+
+                changes = get_changed_files(repo_path, entry["last_commit_sha"])
+                collection = get_collection(str(self.data_path))
+                wing_rooms = self.taxonomy.get("wings", {}).get(name, {}).get("rooms", {})
+
+                for filepath in changes["deleted"]:
+                    full_path = str(Path(repo_path) / filepath)
+                    self._delete_drawers_for_file(collection, full_path)
+
+                for filepath in changes["added"] + changes["modified"]:
+                    full_path = str(Path(repo_path) / filepath)
+                    if Path(full_path).exists():
+                        process_file(
+                            filepath=full_path,
+                            project_path=repo_path,
+                            collection=collection,
+                            wing=name,
+                            rooms=wing_rooms,
+                            agent="memory-sync",
+                        )
+
+                self.ledger.update(name, {
+                    "repo_path": repo_path,
+                    "last_commit_sha": head_sha,
+                    "last_sync_ts": datetime.now(timezone.utc).isoformat(),
+                    "files_indexed": self._count_files(repo_path),
+                    "status": "synced",
+                })
+            except Exception as e:
+                self.ledger.mark_error(name, repo_path, str(e))
+
+        self.ledger.save()
+
+    def _count_files(self, repo_path: str) -> int:
+        """Count indexable files in a repo."""
+        try:
+            from mempalace.miner import scan_project
+            return len(scan_project(repo_path))
+        except Exception:
+            return 0
+
+    def _delete_drawers_for_file(self, collection, source_file: str):
+        """Remove all drawers originating from a deleted file."""
+        try:
+            results = collection.get(where={"source_file": source_file})
+            if results and results.get("ids"):
+                collection.delete(ids=results["ids"])
+        except Exception:
+            pass
