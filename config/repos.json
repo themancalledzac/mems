@@ -1,0 +1,34 @@
+{
+  "edens-zac": {
+    "path": "/repos/edens.zac",
+    "wing": "edens-zac"
+  },
+  "edens-zac-backend": {
+    "path": "/repos/edens.zac.backend",
+    "wing": "edens-zac-backend"
+  },
+  "edens-zac-backend-go": {
+    "path": "/repos/edens.zac.backend.go",
+    "wing": "edens-zac-backend-go"
+  },
+  "edens-zac-ml": {
+    "path": "/repos/edens.zac.ml",
+    "wing": "edens-zac-ml"
+  },
+  "lightroom-export": {
+    "path": "/repos/lightroom-portfolio-export",
+    "wing": "lightroom-export"
+  },
+  "job-search": {
+    "path": "/repos/job-search",
+    "wing": "job-search"
+  },
+  "running": {
+    "path": "/repos/running",
+    "wing": "running"
+  },
+  "memory": {
+    "path": "/repos/Memory",
+    "wing": "memory"
+  }
+}

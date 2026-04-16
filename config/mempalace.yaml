@@ -1,0 +1,230 @@
+wings:
+  edens-zac:
+    rooms:
+      landing:
+        patterns:
+          - "**/page.tsx"
+          - "**/Hero*"
+          - "**/Nav*"
+          - "**/Header*"
+          - "**/Footer*"
+          - "**/layout.tsx"
+      collections:
+        patterns:
+          - "**/Collection*"
+          - "**/collection*"
+          - "**/Parallax*"
+          - "**/ImageGrid*"
+      admin:
+        patterns:
+          - "**/admin/**"
+          - "**/CollectionManager*"
+          - "**/ImageBrowser*"
+          - "**/DragDrop*"
+          - "**/MetadataEdit*"
+      layout-engine:
+        patterns:
+          - "**/BoxTree*"
+          - "**/boxtree*"
+          - "**/layout*"
+          - "**/breakpoint*"
+      media:
+        patterns:
+          - "**/Image*"
+          - "**/image*"
+          - "**/cdn*"
+          - "**/WebP*"
+          - "**/responsive*"
+      api-client:
+        patterns:
+          - "**/api/**"
+          - "**/proxy*"
+          - "**/client*"
+          - "**/fetch*"
+      styling:
+        patterns:
+          - "**/*.scss"
+          - "**/*.css"
+          - "**/theme*"
+          - "**/style*"
+      types:
+        patterns:
+          - "**/types/**"
+          - "**/types.ts"
+          - "**/interfaces*"
+          - "**/enums*"
+
+  edens-zac-backend:
+    rooms:
+      image-processing:
+        patterns:
+          - "**/ImageService*"
+          - "**/Thumbnail*"
+          - "**/WebP*"
+          - "**/Exif*"
+          - "**/GifService*"
+          - "**/upload*"
+      collections:
+        patterns:
+          - "**/Collection*"
+          - "**/collection*"
+      search:
+        patterns:
+          - "**/Search*"
+          - "**/search*"
+          - "**/filter*"
+      client-galleries:
+        patterns:
+          - "**/ClientGallery*"
+          - "**/clientgallery*"
+          - "**/password*"
+          - "**/access*"
+      storage:
+        patterns:
+          - "**/S3*"
+          - "**/s3*"
+          - "**/CloudFront*"
+          - "**/storage*"
+      database:
+        patterns:
+          - "**/migration*"
+          - "**/flyway*"
+          - "**/V[0-9]*"
+          - "**/Jdbc*"
+          - "**/Repository*"
+      config:
+        patterns:
+          - "**/config/**"
+          - "**/application*.yml"
+          - "**/application*.yaml"
+          - "**/exception*"
+          - "**/WebConfig*"
+
+  edens-zac-backend-go:
+    rooms:
+      collections:
+        patterns:
+          - "**/collection*"
+          - "**/Collection*"
+      database:
+        patterns:
+          - "**/repository*"
+          - "**/migration*"
+          - "**/sql*"
+      server:
+        patterns:
+          - "**/router*"
+          - "**/middleware*"
+          - "**/server*"
+          - "**/config*"
+          - "**/main.go"
+
+  edens-zac-ml:
+    rooms:
+      classification:
+        patterns:
+          - "**/clip*"
+          - "**/CLIP*"
+          - "**/tag*"
+          - "**/taxonomy*"
+          - "**/zero_shot*"
+      face-recognition:
+        patterns:
+          - "**/face*"
+          - "**/insightface*"
+          - "**/recognition*"
+      pipeline:
+        patterns:
+          - "**/pipeline*"
+          - "**/orchestrat*"
+          - "**/analyze*"
+      lightroom-plugin:
+        patterns:
+          - "**/*.lua"
+          - "**/lightroom*"
+          - "**/keyword*"
+      api:
+        patterns:
+          - "**/routes*"
+          - "**/schemas*"
+          - "**/main.py"
+          - "**/app.py"
+
+  lightroom-export:
+    rooms:
+      export:
+        patterns:
+          - "**/*.lua"
+          - "*"
+
+  job-search:
+    rooms:
+      evaluation:
+        patterns:
+          - "**/eval*"
+          - "**/score*"
+          - "**/grade*"
+      resume:
+        patterns:
+          - "**/resume*"
+          - "**/cv*"
+          - "**/template*"
+          - "**/pdf*"
+      scanning:
+        patterns:
+          - "**/scan*"
+          - "**/greenhouse*"
+          - "**/ashby*"
+          - "**/lever*"
+          - "**/portal*"
+      tracking:
+        patterns:
+          - "**/track*"
+          - "**/pipeline*"
+          - "**/status*"
+          - "**/merge*"
+      interview-prep:
+        patterns:
+          - "**/interview*"
+          - "**/story*"
+          - "**/star*"
+          - "**/negotiat*"
+      dashboard:
+        patterns:
+          - "**/tui*"
+          - "**/dashboard*"
+          - "**/bubble*"
+          - "**/view*"
+
+  running:
+    rooms:
+      sync:
+        patterns:
+          - "**/strava*"
+          - "**/fetch*"
+          - "**/sync*"
+          - "**/api*"
+      visualization:
+        patterns:
+          - "**/heatmap*"
+          - "**/dashboard*"
+          - "**/plot*"
+          - "**/github_actions*"
+
+  memory:
+    rooms:
+      sync-engine:
+        patterns:
+          - "**/sync_engine*"
+      mcp-server:
+        patterns:
+          - "**/mcp_http_server*"
+          - "**/tools.py"
+      user-wing:
+        patterns:
+          - "**/user_wing*"
+      integration:
+        patterns:
+          - "**/integration/**"
+          - "**/*.mdc"
+          - "**/stop-hook*"
