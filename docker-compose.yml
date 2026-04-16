@@ -1,0 +1,22 @@
+services:
+  memory:
+    build: .
+    ports:
+      - "8787:8787"
+    volumes:
+      - palace_data:/data
+      - ~/Code/edens.zac:/repos/edens.zac:ro
+      - ~/Code/edens.zac.backend:/repos/edens.zac.backend:ro
+      - ~/Code/edens.zac.backend.go:/repos/edens.zac.backend.go:ro
+      - ~/Code/edens.zac.ml:/repos/edens.zac.ml:ro
+      - ~/Code/lightroom-portfolio-export:/repos/lightroom-portfolio-export:ro
+      - ~/Code/job-search:/repos/job-search:ro
+      - ~/Code/running:/repos/running:ro
+      - ~/Code/Memory:/repos/Memory:ro
+    environment:
+      - MEMORY_PORT=8787
+      - PALACE_PATH=/data
+      - CONFIG_PATH=/config
+
+volumes:
+  palace_data:
