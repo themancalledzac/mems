@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from mempalace.miner import mine, process_file
+from mempalace.miner import process_file, scan_project
 from mempalace.palace import get_collection
 
 
@@ -92,7 +92,11 @@ class SyncEngine:
             self.taxonomy: dict = yaml.safe_load(f)
 
     def full_sync(self, wing_name: str | None = None):
-        """Run full mine on all repos (or a specific wing)."""
+        """Run full mine on all repos (or a specific wing).
+
+        Uses scan_project + process_file instead of mine() because repos
+        are mounted read-only and mine() expects a mempalace.yaml in each repo.
+        """
         targets = (
             {wing_name: self.repos[wing_name]}
             if wing_name
@@ -102,17 +106,27 @@ class SyncEngine:
         for name, repo_config in targets.items():
             repo_path = repo_config["path"]
             try:
-                mine(
-                    project_dir=repo_path,
-                    palace_path=str(self.data_path),
-                    wing_override=name,
-                )
+                files = scan_project(repo_path)
+                collection = get_collection(str(self.data_path))
+                wing_rooms = self.taxonomy.get("wings", {}).get(name, {}).get("rooms", {})
+
+                for filepath in files:
+                    process_file(
+                        filepath=str(filepath),
+                        project_path=repo_path,
+                        collection=collection,
+                        wing=name,
+                        rooms=wing_rooms,
+                        agent="memory-sync",
+                        dry_run=False,
+                    )
+
                 head_sha = get_head_sha(repo_path)
                 self.ledger.update(name, {
                     "repo_path": repo_path,
                     "last_commit_sha": head_sha,
                     "last_sync_ts": datetime.now(timezone.utc).isoformat(),
-                    "files_indexed": self._count_files(repo_path),
+                    "files_indexed": len(files),
                     "status": "synced",
                 })
             except Exception as e:
@@ -160,25 +174,19 @@ class SyncEngine:
                             agent="memory-sync",
                         )
 
+                file_count = len(changes["added"]) + len(changes["modified"])
+                prev_count = entry.get("files_indexed", 0)
                 self.ledger.update(name, {
                     "repo_path": repo_path,
                     "last_commit_sha": head_sha,
                     "last_sync_ts": datetime.now(timezone.utc).isoformat(),
-                    "files_indexed": self._count_files(repo_path),
+                    "files_indexed": prev_count + len(changes["added"]) - len(changes["deleted"]),
                     "status": "synced",
                 })
             except Exception as e:
                 self.ledger.mark_error(name, repo_path, str(e))
 
         self.ledger.save()
-
-    def _count_files(self, repo_path: str) -> int:
-        """Count indexable files in a repo."""
-        try:
-            from mempalace.miner import scan_project
-            return len(scan_project(repo_path))
-        except Exception:
-            return 0
 
     def _delete_drawers_for_file(self, collection, source_file: str):
         """Remove all drawers originating from a deleted file."""

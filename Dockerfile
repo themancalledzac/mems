@@ -9,7 +9,7 @@ COPY pyproject.toml .
 RUN pip install --no-cache-dir .
 
 COPY src/ src/
-COPY config/ config/
+COPY config/ /config/
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 

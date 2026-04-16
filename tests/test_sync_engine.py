@@ -113,10 +113,12 @@ class TestSyncEngine:
             data_path=str(tmp_palace),
         )
 
-        with patch("src.sync_engine.mine") as mock_mine:
+        with patch("src.sync_engine.scan_project", return_value=[mock_repo / "hello.py"]) as mock_scan, \
+             patch("src.sync_engine.process_file") as mock_process:
             engine.full_sync()
 
-        mock_mine.assert_called_once()
+        mock_scan.assert_called_once()
+        mock_process.assert_called_once()
         entry = engine.ledger.get("test-wing")
         assert entry is not None
         assert entry["status"] == "synced"
@@ -131,7 +133,7 @@ class TestSyncEngine:
             data_path=str(tmp_palace),
         )
 
-        with patch("src.sync_engine.mine", side_effect=Exception("repo not found")):
+        with patch("src.sync_engine.scan_project", side_effect=Exception("repo not found")):
             engine.full_sync()
 
         entry = engine.ledger.get("bad-wing")
@@ -209,10 +211,11 @@ class TestSyncEngine:
             data_path=str(tmp_palace),
         )
 
-        with patch("src.sync_engine.mine") as mock_mine:
+        with patch("src.sync_engine.scan_project", return_value=[mock_repo / "hello.py"]) as mock_scan, \
+             patch("src.sync_engine.process_file") as mock_process:
             engine.full_sync(wing_name="test-wing")
 
         # Only test-wing should be synced
-        mock_mine.assert_called_once()
+        mock_scan.assert_called_once()
         assert engine.ledger.get("test-wing") is not None
         assert engine.ledger.get("other-wing") is None

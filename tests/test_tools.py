@@ -10,7 +10,8 @@ class TestHandleSync:
         repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
-        with patch("src.sync_engine.mine"):
+        with patch("src.sync_engine.scan_project", return_value=[]), \
+             patch("src.sync_engine.process_file"):
             result = handle_sync(
                 config_path=str(tmp_config),
                 data_path=str(tmp_palace),
@@ -23,7 +24,8 @@ class TestHandleSync:
         repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
-        with patch("src.sync_engine.mine"):
+        with patch("src.sync_engine.scan_project", return_value=[]), \
+             patch("src.sync_engine.process_file"):
             result = handle_sync(
                 config_path=str(tmp_config),
                 data_path=str(tmp_palace),
@@ -53,7 +55,8 @@ class TestHandleSyncStatus:
         repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
-        with patch("src.sync_engine.mine"):
+        with patch("src.sync_engine.scan_project", return_value=[]), \
+             patch("src.sync_engine.process_file"):
             handle_sync(
                 config_path=str(tmp_config),
                 data_path=str(tmp_palace),
