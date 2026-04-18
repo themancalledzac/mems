@@ -9,7 +9,6 @@ from typing import Any
 
 import yaml
 
-
 WINGPACK_SCHEMA_VERSION = "1.0"
 
 

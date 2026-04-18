@@ -43,11 +43,13 @@ def _check_compat(new_m: dict, old_m: dict | None) -> None:
         return
     if new_m["embedding_dim"] != old_m["embedding_dim"]:
         raise PublishRefused(
-            f"embedding dim mismatch: new={new_m['embedding_dim']} vs existing={old_m['embedding_dim']}"
+            f"embedding dim mismatch: new={new_m['embedding_dim']} "
+            f"vs existing={old_m['embedding_dim']}"
         )
     if new_m["embedding_model"] != old_m["embedding_model"]:
         raise PublishRefused(
-            f"embedding model mismatch: new={new_m['embedding_model']!r} vs {old_m['embedding_model']!r}"
+            f"embedding model mismatch: new={new_m['embedding_model']!r} "
+            f"vs {old_m['embedding_model']!r}"
         )
 
 

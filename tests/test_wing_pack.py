@@ -28,7 +28,8 @@ def test_write_wingpack_emits_six_members(tmp_path, sample_wing_meta):
     assert out.exists()
     with zipfile.ZipFile(out) as zf:
         names = set(zf.namelist())
-    assert {"manifest.json", "wingpack.yaml", "keywords.json", "rooms.json", "prompts.json"} <= names
+    expected = {"manifest.json", "wingpack.yaml", "keywords.json", "rooms.json", "prompts.json"}
+    assert expected <= names
 
 
 def test_manifest_records_embedding_metadata(tmp_path, sample_wing_meta):
