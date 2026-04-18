@@ -1,230 +1,533 @@
+# Memory Palace taxonomy.
+#
+# Shape: wings[<wing>].halls[<hall>].rooms is a list of {name, description, keywords}.
+#   - Halls are broad feature areas ("landing-page", "media-pipeline").
+#   - Rooms are sub-topics within a hall.
+#   - Keywords are short tokens matched against file basenames, path segments,
+#     and file content (see src/filters.py).
+#
+# A file is routed to a room via priority-ordered detection:
+#   1. rooms.json explicit blocks (per-wing override)
+#   2. Path prefix — wing path segment substring-matches a room name or keyword
+#   3. Keyword content score — highest-scoring room wins
+#   4. Fallback — 'general' room (auto-created per wing)
+#
+# Room names must be unique within a wing.
+
 wings:
   edens-zac:
-    rooms:
-      landing:
-        patterns:
-          - "**/page.tsx"
-          - "**/Hero*"
-          - "**/Nav*"
-          - "**/Header*"
-          - "**/Footer*"
-          - "**/layout.tsx"
+    halls:
+      landing-page:
+        rooms:
+          - name: hero
+            description: Top-of-page banner and primary call-to-action sections.
+            keywords: [Hero, Banner, CTA, page.tsx]
+          - name: navigation
+            description: Header, footer, menu, and site-wide navigation components.
+            keywords: [SiteHeader, Header, Footer, Nav, Menu, Navigation]
+          - name: about
+            description: About section, contact forms, and introductory content.
+            keywords: [About, Contact, ContactForm]
+
       collections:
-        patterns:
-          - "**/Collection*"
-          - "**/collection*"
-          - "**/Parallax*"
-          - "**/ImageGrid*"
-      admin:
-        patterns:
-          - "**/admin/**"
-          - "**/CollectionManager*"
-          - "**/ImageBrowser*"
-          - "**/DragDrop*"
-          - "**/MetadataEdit*"
-      layout-engine:
-        patterns:
-          - "**/BoxTree*"
-          - "**/boxtree*"
-          - "**/layout*"
-          - "**/breakpoint*"
-      media:
-        patterns:
-          - "**/Image*"
-          - "**/image*"
-          - "**/cdn*"
-          - "**/WebP*"
-          - "**/responsive*"
+        rooms:
+          - name: collection-list
+            description: Collection browsing, selection, and display.
+            keywords: [Collection, ContentCollection, CollectionListSelector, CollectionPageClient]
+          - name: collection-filtering
+            description: Filter bars and content filtering logic for browsing.
+            keywords: [ContentFilter, FilterBar, LocationFilterBar, Filter, GalleryFilter]
+          - name: collection-layout
+            description: Gallery layout, row optimization, and content arrangement algorithms.
+            keywords: [contentLayout, rowCombination, rowStructure, rowOptimizer, Layout]
+
+      content-display:
+        rooms:
+          - name: media-rendering
+            description: Image and content block rendering, including parallax effects.
+            keywords: [BoxRenderer, CollectionContentRenderer, Content, Parallax, ImageRenderer]
+          - name: fullscreen-viewer
+            description: Fullscreen modal and expanded image viewing experience.
+            keywords: [FullScreen, FullScreenModal, ImageDownload, ClientGalleryDownload, ClientGalleryGate]
+          - name: metadata-overlays
+            description: Badges, overlays, image annotations, and metadata display on images.
+            keywords: [BadgeOverlay, ImageOverlay, ReorderOverlay, ImageMetadata]
+
+      metadata:
+        rooms:
+          - name: metadata-admin
+            description: Metadata editor, selector, and creation modal for images.
+            keywords: [ImageMetadataModal, UnifiedMetadataSelector, TextBlockCreateModal, MetadataEditor]
+          - name: metadata-pages
+            description: Pages displaying and managing tags, locations, people, and categories.
+            keywords: [MetadataPage, TagPage, LocationPage, PersonPage, Tag, Location, Person]
+
+      admin-panel:
+        rooms:
+          - name: admin-collections
+            description: Admin interface for managing collections and viewing all images.
+            keywords: [admin, all-collections, all-images, Manage, ManageClient]
+          - name: admin-content
+            description: Reordering, cover selection, and content management utilities.
+            keywords: [useContentReordering, useCoverImageSelection, useImageClickHandler, manageUtils]
+
       api-client:
-        patterns:
-          - "**/api/**"
-          - "**/proxy*"
-          - "**/client*"
-          - "**/fetch*"
-      styling:
-        patterns:
-          - "**/*.scss"
-          - "**/*.css"
-          - "**/theme*"
-          - "**/style*"
-      types:
-        patterns:
-          - "**/types/**"
-          - "**/types.ts"
-          - "**/interfaces*"
-          - "**/enums*"
+        rooms:
+          - name: api-core
+            description: Core API client and backend communication utilities.
+            keywords: [core, api, apiUtils, proxy, revalidate, route]
+          - name: api-resources
+            description: Collection and content data fetching and management.
+            keywords: [collections, content, collectionStorage, collectionData]
+
+      utilities:
+        rooms:
+          - name: hooks
+            description: Custom React hooks for state, DOM interaction, and image handling.
+            keywords: [use, useFullScreen, useCollectionData, useParallax, useClickOutside]
+          - name: helpers
+            description: Helper functions for content rendering, filtering, and layout logic.
+            keywords: [Utils, contentRenderer, contentComponent, contentTypeGuards, contentRating]
+          - name: styling
+            description: Global styles, component stylesheets, and theme configuration.
+            keywords: [module.scss, globals.css, styles, admin.module, forms.module, layout.module]
 
   edens-zac-backend:
-    rooms:
-      image-processing:
-        patterns:
-          - "**/ImageService*"
-          - "**/Thumbnail*"
-          - "**/WebP*"
-          - "**/Exif*"
-          - "**/GifService*"
-          - "**/upload*"
-      collections:
-        patterns:
-          - "**/Collection*"
-          - "**/collection*"
-      search:
-        patterns:
-          - "**/Search*"
-          - "**/search*"
-          - "**/filter*"
-      client-galleries:
-        patterns:
-          - "**/ClientGallery*"
-          - "**/clientgallery*"
-          - "**/password*"
-          - "**/access*"
-      storage:
-        patterns:
-          - "**/S3*"
-          - "**/s3*"
-          - "**/CloudFront*"
-          - "**/storage*"
-      database:
-        patterns:
-          - "**/migration*"
-          - "**/flyway*"
-          - "**/V[0-9]*"
-          - "**/Jdbc*"
-          - "**/Repository*"
-      config:
-        patterns:
-          - "**/config/**"
-          - "**/application*.yml"
-          - "**/application*.yaml"
-          - "**/exception*"
-          - "**/WebConfig*"
+    halls:
+      content-management:
+        rooms:
+          - name: content-core
+            description: Content CRUD operations for images, text, GIFs, and collections.
+            keywords: [ContentService, ContentControllerDev, ContentControllerProd, ContentEntity, ContentModel, ContentRequests]
+          - name: collection-organization
+            description: Collection entity management, grouping, and retrieval with pagination.
+            keywords: [CollectionService, CollectionControllerDev, CollectionControllerProd, CollectionEntity, CollectionModel, CollectionProcessingUtil]
+          - name: content-conversion
+            description: Entity-to-model mapping and serialization for API responses.
+            keywords: [ContentModelConverter, Records, ContentFilmTypeModel, ContentImageUpdateRequest]
+
+      media-processing:
+        rooms:
+          - name: image-pipeline
+            description: Orchestrates parallel image uploads, processing, and storage in collections.
+            keywords: [ImageUploadPipelineService, DiskUploadRequest, ImageUploadResult, upload]
+          - name: image-transformation
+            description: Image resizing, WebP conversion, GIF/MP4 frame extraction, and S3 operations.
+            keywords: [ImageProcessingService, Thumbnail, WebP, GIF, S3, BufferedImage, ImageIO]
+          - name: metadata-extraction
+            description: EXIF and XMP parsing from images for technical metadata and keyword extraction.
+            keywords: [ImageMetadataExtractor, ImageMetadata, XMP, Exif, metadata]
+
+      access-control:
+        rooms:
+          - name: gallery-authentication
+            description: Password-based authentication and authorization for client gallery views.
+            keywords: [ClientGalleryAuthService, PasswordRequest]
+
+      data-access:
+        rooms:
+          - name: repositories
+            description: Data access objects for content, collections, and core domain entities.
+            keywords: [ContentRepository, CollectionRepository, BaseDao, Repository, Jdbc]
+          - name: metadata-repositories
+            description: Data access for tags, people, camera equipment, lenses, locations.
+            keywords: [TagRepository, PersonRepository, EquipmentRepository, LocationRepository]
+          - name: database-migrations
+            description: Flyway schema versioning and evolution.
+            keywords: [migration, schema, flyway, V1__, V2__]
+
+      domain-validation:
+        rooms:
+          - name: content-validation
+            description: Business rule validation for content creation and image updates.
+            keywords: [ContentValidator, ContentImageUpdateValidator, ImageMetadataValidator]
+          - name: metadata-validation
+            description: Validation rules for tags, people, cameras, locations.
+            keywords: [MetadataValidator]
+
+      infrastructure:
+        rooms:
+          - name: cloud-storage
+            description: AWS S3 and CloudFront configuration for asset hosting.
+            keywords: [S3Config, S3Client, CloudFront, bucketName]
+          - name: framework-configuration
+            description: Spring Boot, Tomcat, ImageIO, CORS, and exception handling setup.
+            keywords: [WebConfigDev, WebConfigProd, TomcatConfig, ImageIoConfig, GlobalExceptionHandler, InternalSecretFilter]
+          - name: application-core
+            description: Application entry point and shared defaults.
+            keywords: [Application, DefaultValues, ResourceNotFoundException]
+
+      domain-types:
+        rooms:
+          - name: content-types
+            description: Enums for content, collection, film, display modes.
+            keywords: [ContentType, CollectionType, FilmType, FilmFormat, DisplayMode, TextFormType]
+
+      utilities:
+        rooms:
+          - name: service-utilities
+            description: Pagination, slug generation, date parsing, transaction support.
+            keywords: [PaginationUtil, SlugUtil, JobTrackingService, ContentMutationUtil]
+          - name: query-operations
+            description: Search and filtering for images and metadata.
+            keywords: [ImageSearchRequest, ImageSearchResponse, ImageSearchFilter]
 
   edens-zac-backend-go:
-    rooms:
-      collections:
-        patterns:
-          - "**/collection*"
-          - "**/Collection*"
-      database:
-        patterns:
-          - "**/repository*"
-          - "**/migration*"
-          - "**/sql*"
-      server:
-        patterns:
-          - "**/router*"
-          - "**/middleware*"
-          - "**/server*"
-          - "**/config*"
-          - "**/main.go"
+    halls:
+      http-layer:
+        rooms:
+          - name: handler
+            description: HTTP request handlers for collections and content.
+            keywords: [handler, collection_handler]
+          - name: middleware
+            description: HTTP middleware for logging, CORS, and request processing.
+            keywords: [middleware, logging, cors]
+
+      application:
+        rooms:
+          - name: service
+            description: Collection and content service orchestration.
+            keywords: [service, collection_service]
+
+      data:
+        rooms:
+          - name: repository
+            description: Collection and image repository with query logic.
+            keywords: [repository, collection_repo]
+          - name: model
+            description: Domain models, entities, and DTOs.
+            keywords: [model, collection, content, image_response]
+
+      infrastructure:
+        rooms:
+          - name: config
+            description: Environment-based configuration (server, database, AWS).
+            keywords: [config]
+          - name: server
+            description: Main entry point and server initialization.
+            keywords: [main]
 
   edens-zac-ml:
-    rooms:
+    halls:
       classification:
-        patterns:
-          - "**/clip*"
-          - "**/CLIP*"
-          - "**/tag*"
-          - "**/taxonomy*"
-          - "**/zero_shot*"
+        rooms:
+          - name: clip-tagger
+            description: CLIP zero-shot image tagging with prompt ensembling.
+            keywords: [clip_tagger, CLIPTagger, zero_shot, embedding, prompt]
+          - name: tag-taxonomy
+            description: Tag vocabulary and prompt templates for classification.
+            keywords: [tag_taxonomy, TagTaxonomy, taxonomy, category, prompts]
+
       face-recognition:
-        patterns:
-          - "**/face*"
-          - "**/insightface*"
-          - "**/recognition*"
+        rooms:
+          - name: face-analyzer
+            description: InsightFace-based face detection and identity recognition.
+            keywords: [face_analyzer, FaceAnalyzer, FaceDetection, insightface, retinaface, arcface]
+          - name: face-db
+            description: SQLite persistence for face embeddings and identity profiles.
+            keywords: [face_db, FaceDB, identity, exemplar, centroid]
+
       pipeline:
-        patterns:
-          - "**/pipeline*"
-          - "**/orchestrat*"
-          - "**/analyze*"
-      lightroom-plugin:
-        patterns:
-          - "**/*.lua"
-          - "**/lightroom*"
-          - "**/keyword*"
+        rooms:
+          - name: image-analyzer
+            description: Orchestrates CLIP and face analysis with async/threading.
+            keywords: [analyzer, ImageAnalyzer, analyze, orchestrat, pipeline]
+          - name: metadata-enricher
+            description: EXIF-based metadata extraction and confidence boosting.
+            keywords: [metadata_enricher, MetadataEnricher, exif, gps, boost]
+
       api:
-        patterns:
-          - "**/routes*"
-          - "**/schemas*"
-          - "**/main.py"
-          - "**/app.py"
+        rooms:
+          - name: routes
+            description: FastAPI endpoints for tagging, face labeling, tag management.
+            keywords: [routes, router, analyze_local, label_face, train_identity, sync_keywords]
+          - name: models
+            description: Pydantic request/response schemas.
+            keywords: [models, AnalyzeRequest, AnalyzeResponse, TagResult, PersonResult]
+          - name: backend-client
+            description: HTTP client for canonical tags/people/locations from Java backend.
+            keywords: [backend_client, BackendClient, fetch_tags, fetch_people, httpx]
+
+      persistence:
+        rooms:
+          - name: correction-db
+            description: SQLite tracking of tag corrections (accepted/rejected/deprioritized).
+            keywords: [correction_db, CorrectionDB, correction, record_correction]
+
+      config:
+        rooms:
+          - name: settings
+            description: Settings configuration (device, paths, feature flags).
+            keywords: [settings, Settings, config]
+
+      lightroom-plugin:
+        rooms:
+          - name: lua-plugin
+            description: Lightroom SDK plugin for UI integration and keyword management.
+            keywords: [lightroom, keyword, PluginInit, MLTaggerMenuItem, KeywordManager]
 
   lightroom-export:
-    rooms:
-      export:
-        patterns:
-          - "**/*.lua"
-          - "*"
+    halls:
+      plugin-core:
+        rooms:
+          - name: manifest
+            description: Plugin registration, SDK requirements, service provider binding.
+            keywords: [Info.lua, LrSdkVersion, LrPluginName, LrExportServiceProvider]
+
+      backend-api:
+        rooms:
+          - name: http-utilities
+            description: HTTP GET/POST with JSON serialization, error handling, URL normalization.
+            keywords: [httpGetJson, httpPostJson, urlEncode, normalizeUrl, LrHttp]
+          - name: api-operations
+            description: Backend collection fetching, metadata queries, connection testing.
+            keywords: [fetchCollections, fetchMetadata, checkConnectionAsync]
+
+      export-engine:
+        rooms:
+          - name: ui-dialogs
+            description: Export dialog layout, form bindings, mode toggles, dynamic visibility.
+            keywords: [sectionsForTopOfDialog, startDialog, LrView, popup_menu, bind]
+          - name: photo-processing
+            description: Render photos, extract keywords, collect file paths, failure tracking.
+            keywords: [processRenderedPhotos, renditions, getRawMetadata]
+          - name: collection-management
+            description: Resolve collection ID based on mode, create new collections, location assignment.
+            keywords: [uploadMode, UPLOAD_MODE_EXISTING, UPLOAD_MODE_CREATE, locationIds]
+
+      utilities:
+        rooms:
+          - name: json-codec
+            description: JSON encoder and decoder with escape handling, object/array parsing.
+            keywords: [JSON.lua, encode, decode, decodeString, decodeValue]
 
   job-search:
-    rooms:
-      evaluation:
-        patterns:
-          - "**/eval*"
-          - "**/score*"
-          - "**/grade*"
-      resume:
-        patterns:
-          - "**/resume*"
-          - "**/cv*"
-          - "**/template*"
-          - "**/pdf*"
-      scanning:
-        patterns:
-          - "**/scan*"
-          - "**/greenhouse*"
-          - "**/ashby*"
-          - "**/lever*"
-          - "**/portal*"
-      tracking:
-        patterns:
-          - "**/track*"
-          - "**/pipeline*"
-          - "**/status*"
-          - "**/merge*"
-      interview-prep:
-        patterns:
-          - "**/interview*"
-          - "**/story*"
-          - "**/star*"
-          - "**/negotiat*"
-      dashboard:
-        patterns:
-          - "**/tui*"
-          - "**/dashboard*"
-          - "**/bubble*"
-          - "**/view*"
+    halls:
+      discovery-and-research:
+        rooms:
+          - name: scanning
+            description: Portal scrapers for company career pages, greenhouse API, webquery discovery.
+            keywords: [scan, greenhouse, ashby, lever, portal, careers, webquery, discovery]
+          - name: deep-company-research
+            description: Multi-faceted company investigation for culture, compensation, and fit signals.
+            keywords: [deep, research, company, culture, comp, benefits, crunchbase]
+          - name: linkedin-job-search
+            description: LinkedIn job discovery with quick-rank triage and dedup across reports.
+            keywords: [linkedin, search, notifications, feed, quick-rank, scoring]
+
+      evaluation-and-scoring:
+        rooms:
+          - name: auto-pipeline
+            description: End-to-end job evaluation — extract JD, research, score A-F, generate report.
+            keywords: [evaluate, pipeline, auto, assess, score, report, analysis]
+          - name: quick-ranking
+            description: Fast 0-10 triage scoring for pipeline URLs and bulk job discovery.
+            keywords: [quick, triage, rubric, ranking, filter]
+          - name: multi-job-batch-evaluation
+            description: Parallel evaluation of 3+ jobs in batch mode with parallel workers.
+            keywords: [batch, parallel, multi, conductor, worker, process]
+
+      resume-and-application:
+        rooms:
+          - name: resume-tailoring
+            description: Deep library-driven resume adaptation to JD — discovery, matching, DOCX generation.
+            keywords: [resume, tailoring, cv, adapt, match, jd, library, docx]
+          - name: pdf-generation
+            description: ATS-optimized PDF from template with keyword injection and pagination.
+            keywords: [pdf, ats, generate, keyword, template, design, html, puppeteer]
+          - name: application-form-assistant
+            description: Live form-filling with context from prior evaluations and answer caching.
+            keywords: [apply, form, question, assistant, answer, fill]
+          - name: cover-letter-generation
+            description: Tailored cover letter with narrative threading and PDF output.
+            keywords: [cover-letter, narrative, personalize]
+
+      interview-and-negotiation:
+        rooms:
+          - name: interview-story-bank
+            description: Accumulates STAR+Reflection narratives from evaluations; serves as answer bank.
+            keywords: [interview, story, star, reflection, behavior, bank, prepare]
+          - name: negotiation-frameworks
+            description: Scripts for salary negotiation, geographic discount pushback, competing offers.
+            keywords: [negotiate, salary, pushback, offer, leverage]
+
+      pipeline-and-tracking:
+        rooms:
+          - name: pipeline-inbox
+            description: URL accumulator with two-pass triage (quick-rank then full eval).
+            keywords: [pipeline, inbox, pending, url, jd-storage]
+          - name: application-tracker
+            description: Canonical source for application status, scores, PDFs, reports with integrity checks.
+            keywords: [tracker, applications, status, merge, dedup, normalize, integrity]
+          - name: candidate-library
+            description: Source-of-truth inventory of all skills, experience, projects, achievements.
+            keywords: [library, candidate, skills, experience, achievement, article-digest]
+
+      dashboard-and-visualization:
+        rooms:
+          - name: tui-dashboard
+            description: Bubbletea Go application for browsing, filtering, sorting pipeline and applications.
+            keywords: [dashboard, tui, terminal, bubbletea, view]
+          - name: retrospective-reporting
+            description: Session reviews — scoring calibration, framing adjustments, archetype refinement.
+            keywords: [retrospective, retro, review, calibration, adjust, learning]
+
+      configuration-and-utilities:
+        rooms:
+          - name: config-and-profile
+            description: Profile YAML, job criteria rubric, candidate narrative, archetype mapping.
+            keywords: [config, profile, criteria, rubric, narrative, archetype, identity]
+          - name: data-integrity-utilities
+            description: Merge tracker, dedup, status normalization, CV sync verification.
+            keywords: [merge, dedup, normalize, verify, sync, validate]
+          - name: batch-orchestration
+            description: Conductor/worker architecture, state management, resumable batch processing.
+            keywords: [conductor, worker, state, runner, log, progress]
 
   running:
-    rooms:
-      sync:
-        patterns:
-          - "**/strava*"
-          - "**/fetch*"
-          - "**/sync*"
-          - "**/api*"
+    halls:
+      auth:
+        rooms:
+          - name: setup-auth
+            description: Strava OAuth bootstrap and GitHub Actions secret setup.
+            keywords: [oauth, browser-callback, token-exchange, github-secrets]
+
+      data-sync:
+        rooms:
+          - name: strava-client
+            description: Strava API fetch with token refresh, rate limits, backfill state.
+            keywords: [strava, api-client, fetch, token-refresh, rate-limiting]
+          - name: activity-normalize
+            description: Parse raw Strava activities, normalize types, datetime parsing.
+            keywords: [normalize, parse, activity-types, datetime]
+          - name: daily-aggregate
+            description: Aggregate normalized activities into per-day metrics (distance, elevation).
+            keywords: [aggregate, daily-metrics, rollup]
+
+      pipeline:
+        rooms:
+          - name: run-pipeline
+            description: Orchestrate sync → normalize → aggregate → heatmap generation.
+            keywords: [pipeline, orchestration, commit]
+          - name: github-actions-sync
+            description: Scheduled daily Strava sync and push via GitHub Actions.
+            keywords: [github-actions, cron, scheduled, automation]
+
       visualization:
-        patterns:
-          - "**/heatmap*"
-          - "**/dashboard*"
-          - "**/plot*"
-          - "**/github_actions*"
+        rooms:
+          - name: heatmap-generator
+            description: Generate ASCII and PNG heatmaps from aggregated daily data.
+            keywords: [heatmap, ascii-grid, png, visualization]
+          - name: interactive-site
+            description: Single-page web app for heatmap exploration and filtering.
+            keywords: [app.js, index.html, interactive, web]
 
   memory:
-    rooms:
-      sync-engine:
-        patterns:
-          - "**/sync_engine*"
+    halls:
       mcp-server:
-        patterns:
-          - "**/mcp_http_server*"
-          - "**/tools.py"
+        rooms:
+          - name: transport
+            description: FastMCP HTTP server, health endpoint, session routing.
+            keywords: [mcp_http_server, FastMCP, health, streamable]
+          - name: handler-suite
+            description: Tool handlers for sync, navigation, search, wing operations.
+            keywords: [tools, mempalace_search, mempalace_list_wings, mempalace_export_wing]
+
+      sync-orchestration:
+        rooms:
+          - name: diff-engine
+            description: Multi-repo git-diff tracking and ledger state management.
+            keywords: [sync_engine, SyncEngine, SyncLedger, changed_files]
+          - name: room-detection
+            description: Priority-layered room assignment via path, keyword, explicit blocks.
+            keywords: [filters, detect_room_for_wing, path_prefix_match, keyword_score]
+
+      wingpack-pipeline:
+        rooms:
+          - name: pack-author
+            description: .wingpack zip bundler — manifest, rooms, keywords, sync metadata.
+            keywords: [wing_pack, WingpackBuilder, add_manifest, write_wingpack, schema_version]
+          - name: publish-engine
+            description: Repo-scoped wingpack staging — compatibility gates, mode selection.
+            keywords: [wing_publish, publish_to_repo, PublishRefused, embedding_compat]
+          - name: auto-republish
+            description: Post-sync hook for bulk repo export-and-stage pipeline.
+            keywords: [auto_publish, publish_all_wings]
+
+      disaster-recovery:
+        rooms:
+          - name: wing-user-backup
+            description: Daily wing_user JSON snapshots with retention pruning.
+            keywords: [wing_user_snapshot, snapshot_wing_user, prune_snapshots]
+          - name: wing-user-restore
+            description: Auto-restore wing_user from newest backup on empty palace.
+            keywords: [restore_wing_user, restore_if_empty]
+
       user-wing:
-        patterns:
-          - "**/user_wing*"
-      integration:
-        patterns:
-          - "**/integration/**"
-          - "**/*.mdc"
-          - "**/stop-hook*"
+        rooms:
+          - name: persistent-context
+            description: User thoughts by hall (questions, discoveries, goals, etc.), with dedup.
+            keywords: [user_wing, UserWing, VALID_HALLS, DEDUP_THRESHOLD]
+
+      cli-interface:
+        rooms:
+          - name: dispatcher
+            description: mems CLI entry point, command registration, help scaffold.
+            keywords: [main, register_command, build_parser, cmd_health, cmd_tools]
+          - name: palace-ops
+            description: status, sync, resync, wings, rooms, logs, export subcommands.
+            keywords: [palace_ops, cmd_status, cmd_sync, cmd_wings, cmd_rooms]
+          - name: publishing-ops
+            description: publish single/all wings with mode selection and dry-run.
+            keywords: [publishing, cmd_publish, cmd_publish_all]
+          - name: search-ops
+            description: semantic search, user-wing search/summary/write commands.
+            keywords: [search, cmd_search, cmd_user_search, cmd_user_write, cmd_user_summary]
+          - name: repo-registry-cmds
+            description: Local repos.json CRUD — add, remove, list, show registrations.
+            keywords: [repo_registry, cmd_add, cmd_remove, cmd_list, cmd_show]
+          - name: ticket-integration
+            description: Jira minimal REST client (urllib + base64) — list, show, search.
+            keywords: [tickets, JiraClient]
+          - name: hybrid-search
+            description: Fetch Jira ticket + semantic-search palace for related drawers.
+            keywords: [hybrid, cmd_hybrid]
+          - name: client-commons
+            description: PalaceClient HTTP adapter, tool result extraction, printing.
+            keywords: [palace_client, PalaceClient, common, extract_tool_result, print_table]
+
+      installation-and-integration:
+        rooms:
+          - name: setup-script
+            description: One-shot interactive installer — venv, pip, repo config, IDE hooks.
+            keywords: [setup.sh, prompt, install]
+          - name: ide-installers
+            description: Cursor and Codex IDE bridge installation.
+            keywords: [install_cursor.sh, install_codex.sh]
+          - name: mcp-discovery
+            description: MCP manifest and discovery config for Cursor and Codex.
+            keywords: [mempalace_mcp_cursor, mempalace_codex_append]
+          - name: cursor-protocol
+            description: Cursor integration rules — protocol, hall reference, operations.
+            keywords: [mempalace.mdc, alwaysApply]
+
+      docker-runtime:
+        rooms:
+          - name: containerfile
+            description: Python 3.12 slim image, git+curl, pip install, model warmup, healthcheck.
+            keywords: [Dockerfile, PALACE_PATH, MEMORY_PORT, healthcheck]
+          - name: orchestration
+            description: Docker Compose service, port mapping, named volume strategy.
+            keywords: [docker-compose, mempalace-data, volumes, ports]
+          - name: entrypoint-flow
+            description: Boot sequence — restore, sync (first-run full), snapshot, serve.
+            keywords: [entrypoint.sh, restore_if_empty, snapshot_wing_user]
+
+      configuration:
+        rooms:
+          - name: wing-taxonomy
+            description: mempalace.yaml — per-wing hall and room definitions.
+            keywords: [mempalace.yaml, wings, halls, rooms]
+          - name: repo-bindings
+            description: repos.json — per-repo path and wing name bindings.
+            keywords: [repos.json, wing, slug]
