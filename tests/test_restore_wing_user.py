@@ -1,0 +1,61 @@
+"""wing_user restore tests."""
+
+import pytest
+
+from src.restore_wing_user import restore_if_empty
+from src.wing_user_snapshot import snapshot_wing_user
+
+
+@pytest.fixture
+def tmp_palace_with_wing_user(tmp_path):
+    from src.user_wing import UserWing
+
+    palace = tmp_path / "palace"
+    palace.mkdir()
+    wing = UserWing(palace_path=str(palace))
+    wing.write(hall="frustrations", content="I'm frustrated about X", topic="debugging")
+    wing.write(hall="decisions", content="Decision: use Y", topic="architecture")
+    return palace
+
+
+def test_restore_noops_when_non_empty(tmp_palace_with_wing_user, tmp_path):
+    exp = tmp_path / "exports"
+    snapshot_wing_user(tmp_palace_with_wing_user, exp)
+    result = restore_if_empty(tmp_palace_with_wing_user, exp)
+    assert result["action"] == "skipped"
+    assert "not empty" in result["reason"]
+
+
+def test_restore_reinserts_when_empty(tmp_palace_with_wing_user, tmp_path):
+    exp = tmp_path / "exports"
+    snapshot_wing_user(tmp_palace_with_wing_user, exp)
+
+    # Wipe wing_user via the same collection abstraction UserWing / snapshot uses.
+    from mempalace.palace import get_collection
+
+    col = get_collection(
+        str(tmp_palace_with_wing_user),
+        collection_name="mempalace_drawers",
+        create=True,
+    )
+    existing = col.get(where={"wing": "user"})
+    col.delete(ids=existing["ids"])
+
+    # Confirm wiped.
+    after = col.get(where={"wing": "user"})
+    assert after["ids"] == []
+
+    result = restore_if_empty(tmp_palace_with_wing_user, exp)
+    assert result["action"] == "restored"
+    assert result["drawers_restored"] == 2
+
+    # Confirm drawers actually re-inserted.
+    repop = col.get(where={"wing": "user"})
+    assert len(repop["ids"]) == 2
+
+
+def test_restore_noops_when_no_backup(tmp_path):
+    palace = tmp_path / "empty_palace"
+    palace.mkdir()
+    result = restore_if_empty(palace, tmp_path / "empty_exports")
+    assert result["action"] == "skipped"
