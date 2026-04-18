@@ -1,16 +1,27 @@
 from src.mcp_http_server import create_server
 
+EXPECTED_PHASE_4A_TOOLS = {
+    "mempalace_status",
+    "mempalace_list_wings",
+    "mempalace_list_rooms",
+    "mempalace_check_logs",
+    "mempalace_get_logs_recent",
+    "mempalace_search",
+    "mempalace_search_all",
+    "mempalace_resync",
+    "mempalace_export_wing",
+}
+
 
 class TestCreateServer:
     def test_server_has_custom_tools(self, tmp_palace, tmp_config):
-        """The server should register our 8 custom tools."""
+        """The server should register the original 8 custom tools."""
         server = create_server(
             palace_path=str(tmp_palace),
             config_path=str(tmp_config),
         )
-        # FastMCP stores tools internally — get their names via _tool_manager
         tools = server._tool_manager.list_tools()
-        tool_names = [t.name for t in tools]
+        tool_names = {t.name for t in tools}
 
         assert "memory_sync" in tool_names
         assert "memory_sync_status" in tool_names
@@ -21,14 +32,25 @@ class TestCreateServer:
         assert "mempalace_user_merge_topics" in tool_names
         assert "mempalace_user_prune" in tool_names
 
-    def test_server_tool_count(self, tmp_palace, tmp_config):
-        """Should have exactly 8 custom tools."""
+    def test_extended_tools_registered(self, tmp_palace, tmp_config):
+        """Phase 4A tools are registered on the server."""
         server = create_server(
             palace_path=str(tmp_palace),
             config_path=str(tmp_config),
         )
         tools = server._tool_manager.list_tools()
-        assert len(tools) == 8
+        names = {t.name for t in tools}
+        missing = EXPECTED_PHASE_4A_TOOLS - names
+        assert not missing, f"missing tools: {missing}"
+
+    def test_server_tool_count(self, tmp_palace, tmp_config):
+        """8 original + 9 Phase 4A = 17 total custom tools."""
+        server = create_server(
+            palace_path=str(tmp_palace),
+            config_path=str(tmp_config),
+        )
+        tools = server._tool_manager.list_tools()
+        assert len(tools) == 17
 
 
 class TestToolSchemas:
@@ -55,3 +77,62 @@ class TestToolSchemas:
         sync_tool = tools["memory_sync"]
         schema = sync_tool.parameters
         assert "wing" in schema.get("properties", {})
+
+    def test_search_has_slug_and_wing(self, tmp_palace, tmp_config):
+        """mempalace_search should expose slug, wing, room, n."""
+        server = create_server(
+            palace_path=str(tmp_palace),
+            config_path=str(tmp_config),
+        )
+        tools = {t.name: t for t in server._tool_manager.list_tools()}
+        search_tool = tools["mempalace_search"]
+        props = search_tool.parameters.get("properties", {})
+        assert "query" in props
+        assert "slug" in props
+        assert "wing" in props
+        assert "room" in props
+
+
+class TestExtendedHandlers:
+    """Smoke tests on handler functions against an empty tmp_palace."""
+
+    def test_handle_list_wings_empty_palace(self, tmp_palace):
+        from src.tools import handle_list_wings
+
+        wings = handle_list_wings(str(tmp_palace))
+        assert isinstance(wings, list)
+
+    def test_handle_list_rooms_empty_palace(self, tmp_palace):
+        from src.tools import handle_list_rooms
+
+        rooms = handle_list_rooms(str(tmp_palace))
+        assert isinstance(rooms, list)
+
+    def test_handle_status_empty_palace(self, tmp_palace):
+        from src.tools import handle_status
+
+        status = handle_status(str(tmp_palace))
+        assert status["ok"] is True
+        assert status["total_drawers"] == 0
+        assert status["wings"] == {}
+
+    def test_handle_get_logs_recent_empty_palace(self, tmp_palace):
+        from src.tools import handle_get_logs_recent
+
+        logs = handle_get_logs_recent(str(tmp_palace), n=5)
+        assert logs == []
+
+
+class TestHealthRoute:
+    def test_attach_health_route_adds_route(self, tmp_palace, tmp_config):
+        """_attach_health_route should add a /health route to the app."""
+        from src.mcp_http_server import _attach_health_route
+
+        server = create_server(
+            palace_path=str(tmp_palace),
+            config_path=str(tmp_config),
+        )
+        _attach_health_route(server, palace_path=str(tmp_palace))
+        app = server.streamable_http_app()
+        paths = {getattr(r, "path", None) for r in app.routes}
+        assert "/health" in paths
