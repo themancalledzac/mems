@@ -35,9 +35,7 @@ def _wing_user_is_empty(palace_path: Path) -> bool:
 
 def _reinsert_drawers(palace_path: Path, drawers: list[dict]) -> None:
     """Re-insert drawers into wing_user via the same collection abstraction."""
-    collection = get_collection(
-        str(palace_path), collection_name="mempalace_drawers", create=True
-    )
+    collection = get_collection(str(palace_path), collection_name="mempalace_drawers", create=True)
     collection.upsert(
         ids=[d["id"] for d in drawers],
         documents=[d["content"] for d in drawers],

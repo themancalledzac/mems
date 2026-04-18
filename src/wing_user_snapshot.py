@@ -22,9 +22,7 @@ def _read_all_wing_user(palace_path: Path) -> list[dict]:
     shared ``mempalace_drawers`` collection and filters by ``wing == "user"``.
     Keeping this aligned with UserWing is what guarantees restore round-trips.
     """
-    collection = get_collection(
-        str(palace_path), collection_name="mempalace_drawers", create=True
-    )
+    collection = get_collection(str(palace_path), collection_name="mempalace_drawers", create=True)
     try:
         raw = collection.get(where={"wing": "user"})
     except Exception:
@@ -34,8 +32,7 @@ def _read_all_wing_user(palace_path: Path) -> list[dict]:
     docs = raw.get("documents") or []
     metas = raw.get("metadatas") or []
     return [
-        {"id": rid, "content": doc, "metadata": meta}
-        for rid, doc, meta in zip(ids, docs, metas)
+        {"id": rid, "content": doc, "metadata": meta} for rid, doc, meta in zip(ids, docs, metas)
     ]
 
 
