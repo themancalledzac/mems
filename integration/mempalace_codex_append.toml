@@ -1,0 +1,12 @@
+# Append the block below to ~/.config/codex/config.toml to register
+# Memory Palace as an MCP server for the Codex CLI.
+#
+# Requires: the mems docker stack running (docker compose up -d in the mems repo).
+# Verify once with: curl http://localhost:8787/health
+#
+# If a future Codex release changes the MCP config shape, consult the Codex
+# docs — the table name and keys below may need adjustment.
+
+[mcp_servers.mempalace]
+url = "http://localhost:8787/mcp/"
+transport = "streamable-http"
