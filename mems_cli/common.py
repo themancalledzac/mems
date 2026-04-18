@@ -95,3 +95,37 @@ def err(msg: str, code: int = 1) -> NoReturn:
     """Print `msg` to stderr and exit with `code`."""
     print(msg, file=sys.stderr)
     sys.exit(code)
+
+
+# --- MCP tool-call result helpers --------------------------------------------
+
+
+def extract_tool_result(result: Mapping[str, Any]) -> Any:
+    """Pull a useful payload out of an MCP `tools/call` response.
+
+    FastMCP returns `{content: [{type, text}, ...], isError: bool,
+    structuredContent: {...}}`. Prefer `structuredContent` when present
+    (that's the real dict the tool returned). Fall back to decoding the
+    first text block as JSON, then to the raw text.
+    """
+    if not isinstance(result, Mapping):
+        return result
+
+    structured = result.get("structuredContent")
+    if structured is not None:
+        # FastMCP wraps list returns as {"result": [...]} inside structuredContent.
+        if isinstance(structured, Mapping) and set(structured.keys()) == {"result"}:
+            return structured["result"]
+        return structured
+
+    content = result.get("content")
+    if isinstance(content, list) and content:
+        first = content[0]
+        if isinstance(first, Mapping):
+            text = first.get("text")
+            if isinstance(text, str):
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    return text
+    return result
