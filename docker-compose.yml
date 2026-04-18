@@ -1,22 +1,31 @@
 services:
-  memory:
+  mempalace:
     build: .
+    container_name: mempalace
+    restart: unless-stopped
     ports:
-      - "8787:8787"
-    volumes:
-      - palace_data:/data
-      - ~/Code/edens.zac:/repos/edens.zac:ro
-      - ~/Code/edens.zac.backend:/repos/edens.zac.backend:ro
-      - ~/Code/edens.zac.backend.go:/repos/edens.zac.backend.go:ro
-      - ~/Code/edens.zac.ml:/repos/edens.zac.ml:ro
-      - ~/Code/lightroom-portfolio-export:/repos/lightroom-portfolio-export:ro
-      - ~/Code/job-search:/repos/job-search:ro
-      - ~/Code/running:/repos/running:ro
-      - ~/Code/Memory:/repos/Memory:ro
+      # host:container — external stays 8787 (clients baked in), internal is 8080.
+      - "8787:8080"
     environment:
-      - MEMORY_PORT=8787
-      - PALACE_PATH=/data
+      # Dockerfile bakes the defaults; override here only if you need to.
+      - MEMORY_PORT=8080
+      - PALACE_PATH=/data/palace
+      - EXPORTS_PATH=/data/exports
+      - MEMPALACE_EXPORTS_DIR=/data/exports
       - CONFIG_PATH=/config
+      - WING_USER_RETENTION_DAYS=7
+    volumes:
+      # Persistent palace + exports + sync_ledger.json + wing_user backups.
+      - mempalace-data:/data
+      # Per-user taxonomy, repos.json, mempalace.yaml (read-only into container).
+      - ./config:/config:ro
+      # Repo bind-mounts — add your own sibling repos here, read-only.
+      # The sync engine reads config/repos.json to discover wings; each wing's
+      # path must be mounted into the container at the same logical location.
+      # Example (uncomment + edit for your layout):
+      #   - ~/Code/edens-zac:/repos/edens-zac:ro
+      #   - ~/Code/edens-zac-backend:/repos/edens-zac-backend:ro
+      #   - ~/Code/Memory:/repos/Memory:ro
 
 volumes:
-  palace_data:
+  mempalace-data:
