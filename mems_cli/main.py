@@ -65,6 +65,19 @@ def register_subcommands(subparsers: argparse._SubParsersAction) -> None:
     tools_p.set_defaults(func=cmd_tools)
     register_command("tools", cmd_tools)
 
+    # Phase 7 command modules.
+    from mems_cli.commands import (
+        hybrid,
+        palace_ops,
+        publishing,
+        repo_registry,
+        search,
+        tickets,
+    )
+
+    for module in (repo_registry, palace_ops, search, publishing, tickets, hybrid):
+        module.register(subparsers)
+
 
 # --- Handlers ----------------------------------------------------------------
 
