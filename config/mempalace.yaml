@@ -15,6 +15,74 @@
 # Room names must be unique within a wing.
 
 wings:
+  # --------------------------------------------------------------------------
+  # wing_user — MCP-only personal context wing.
+  # No repo — populated exclusively via mempalace_user_write.
+  # Rooms emerge dynamically from usage. Seed rooms listed here enable
+  # keyword-based auto-detection for topic routing.
+  # --------------------------------------------------------------------------
+  wing_user:
+    halls:
+      hall_questions:
+        description: Things the user asked, wondered about, or investigated.
+        rooms:
+          - name: debugging
+            keywords: [bug, error, fix, broken, failing, stack_trace, exception]
+          - name: architecture
+            keywords: [design, pattern, approach, refactor, structure, system]
+          - name: data_pipelines
+            keywords: [pipeline, etl, bronze, silver, gold, ingestion, streaming]
+          - name: tooling
+            keywords: [cli, docker, git, deploy, ci_cd, terraform]
+
+      hall_discoveries:
+        description: Things the user learned, solved, or had confirmed.
+        rooms:
+          - name: solutions
+            keywords: [fixed, resolved, works, root_cause, answer]
+          - name: insights
+            keywords: [realized, learned, pattern, understood, aha]
+
+      hall_frustrations:
+        description: Pain points, blockers, recurring issues.
+        rooms:
+          - name: blockers
+            keywords: [blocked, stuck, can_not, impossible, timeout, broken]
+          - name: recurring_issues
+            keywords: [again, keeps, still, always, every_time]
+
+      hall_goals:
+        description: What the user is trying to achieve — projects, milestones, intentions.
+        rooms:
+          - name: active_projects
+            keywords: [building, implementing, working_on, sprint, ticket]
+          - name: future_plans
+            keywords: [want_to, plan_to, next, eventually, roadmap]
+
+      hall_decisions:
+        description: Choices made, trade-offs evaluated, directions committed to.
+        rooms:
+          - name: technical_decisions
+            keywords: [chose, decided, trade_off, approach, went_with]
+          - name: process_decisions
+            keywords: [workflow, convention, standard, rule, policy]
+
+      hall_observations:
+        description: General thoughts and notes that don't fit other halls.
+        rooms:
+          - name: general
+            keywords: []
+
+      hall_work:
+        description: Operational state — current ticket, active tasks, todos.
+        rooms:
+          - name: current_ticket
+            keywords: [ticket, jira, working_on_ticket, branch_ticket, active_ticket]
+          - name: todo
+            keywords: [todo, task, reminder, followup, backlog_item]
+          - name: wip
+            keywords: [wip, in_progress, blocked_on, waiting_on]
+
   edens-zac:
     halls:
       landing-page:
