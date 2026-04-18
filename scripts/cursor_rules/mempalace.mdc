@@ -1,0 +1,54 @@
+---
+description: Memory Palace MCP usage protocol
+alwaysApply: true
+---
+
+# Memory Palace Protocol
+
+A Memory Palace MCP server runs at http://localhost:8787/mcp/. It indexes all
+repos under ~/Code/ into a searchable semantic knowledge store and maintains a
+User Wing for persistent user context across sessions.
+
+## Before any code exploration
+
+- Call `mempalace_search` (or `mempalace_user_search`) BEFORE using Grep, Glob,
+  or Read to explore unfamiliar code.
+- Use palace results to orient yourself, then drill into specific files as
+  needed.
+- For cross-repo work (frontend + backend, etc.) call `mempalace_find_tunnels`
+  to discover connections between wings.
+
+## On every session start
+
+- Call `mempalace_user_summary` to load user context (goals, frustrations,
+  recent decisions, open questions).
+- This gives critical context about what the user cares about.
+
+## On every substantive response (MANDATORY)
+
+- Review the conversation for distinct user thoughts worth capturing.
+- For each thought, call `mempalace_user_write` with:
+  - `hall`: one of `questions`, `discoveries`, `frustrations`, `goals`,
+    `decisions`, `observations`
+  - `content`: the thought, phrased clearly
+  - `topic`: a short slug
+  - `source_wing` (optional): the relevant repo wing (e.g. `edens-zac`)
+- Do this continuously throughout the conversation — NOT only at the end.
+- Err on the side of writing. Deduplication is automatic.
+
+## Hall reference
+
+| Hall            | When to use                                       |
+| --------------- | ------------------------------------------------- |
+| `questions`     | User is wondering about something                 |
+| `discoveries`   | User learned something new                        |
+| `frustrations`  | User hit a blocker or pain point                  |
+| `goals`         | User stated a short or long-term objective        |
+| `decisions`     | User made a choice and explained reasoning        |
+| `observations`  | User noted a pattern, insight, or factoid         |
+
+## Operations
+
+- Health check: `curl http://localhost:8787/health`
+- Sync wings: `mems sync` (incremental) or `mems sync --full`
+- Diagnose issues: `mems doctor`
