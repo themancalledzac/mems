@@ -11,6 +11,16 @@ from mempalace.miner import process_file, scan_project
 from mempalace.palace import get_collection
 
 
+def _flatten_rooms(wing_def: dict) -> list:
+    """Flatten halls.<hall>.rooms into a single list for process_file."""
+    halls = wing_def.get("halls", {}) or {}
+    flat = []
+    for hall_def in halls.values():
+        for room in hall_def.get("rooms", []) or []:
+            flat.append(room)
+    return flat
+
+
 class SyncLedger:
     """Manages sync_ledger.json — tracks per-repo sync state."""
 
@@ -108,12 +118,13 @@ class SyncEngine:
             try:
                 files = scan_project(repo_path)
                 collection = get_collection(str(self.data_path))
-                wing_rooms = self.taxonomy.get("wings", {}).get(name, {}).get("rooms", {})
+                wing_def = self.taxonomy.get("wings", {}).get(name, {})
+                wing_rooms = _flatten_rooms(wing_def)
 
                 for filepath in files:
                     process_file(
-                        filepath=str(filepath),
-                        project_path=repo_path,
+                        filepath=Path(filepath),
+                        project_path=Path(repo_path),
                         collection=collection,
                         wing=name,
                         rooms=wing_rooms,
@@ -156,22 +167,24 @@ class SyncEngine:
 
                 changes = get_changed_files(repo_path, entry["last_commit_sha"])
                 collection = get_collection(str(self.data_path))
-                wing_rooms = self.taxonomy.get("wings", {}).get(name, {}).get("rooms", {})
+                wing_def = self.taxonomy.get("wings", {}).get(name, {})
+                wing_rooms = _flatten_rooms(wing_def)
 
                 for filepath in changes["deleted"]:
                     full_path = str(Path(repo_path) / filepath)
                     self._delete_drawers_for_file(collection, full_path)
 
                 for filepath in changes["added"] + changes["modified"]:
-                    full_path = str(Path(repo_path) / filepath)
-                    if Path(full_path).exists():
+                    full_path = Path(repo_path) / filepath
+                    if full_path.exists():
                         process_file(
                             filepath=full_path,
-                            project_path=repo_path,
+                            project_path=Path(repo_path),
                             collection=collection,
                             wing=name,
                             rooms=wing_rooms,
                             agent="memory-sync",
+                            dry_run=False,
                         )
 
                 file_count = len(changes["added"]) + len(changes["modified"])

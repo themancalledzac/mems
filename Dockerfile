@@ -19,7 +19,7 @@ ENV PALACE_PATH=/data/palace \
     WING_USER_RETENTION_DAYS=7
 
 # Install project + deps. Copy pyproject + sources needed for the build backend.
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 COPY src/ src/
 COPY mems_cli/ mems_cli/
 RUN pip install --no-cache-dir .

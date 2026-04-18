@@ -138,7 +138,8 @@ else is required on the host except Docker and Python for the CLI.
   `sync_ledger.json`, and `exports/wing_user_backups/`.
 - `./config:/config:ro` — your taxonomy + `repos.json` (read-only inside).
 - `~/Code/<repo>:/repos/<repo>:ro` — one bind-mount per wing you want
-  indexed. Add these to `docker-compose.yml` (examples are commented in).
+  indexed. Put these in a user-local `docker-compose.override.yml`
+  (gitignored); `docker-compose.yml` has examples commented in.
 
 **Env vars that matter:**
 
@@ -191,9 +192,12 @@ rebuilds; they are wiped only by `docker compose down -v`.
   ```
   Edited via `mems repo {add,remove}` or by hand. `setup.sh` writes a
   skeleton there on first run.
-- **`config/mempalace.yaml`** — taxonomy: wings → rooms → keywords. Drives
-  the priority-ordered room detector in `src/filters.py`. Mounted into the
-  container read-only at `/config/mempalace.yaml`.
+- **`config/mempalace.yaml`** — taxonomy: `wings.<name>.halls.<hall>.rooms[]`
+  where each room has `name`, optional `description`, and `keywords[]`.
+  `src/sync_engine.py` flattens halls into a single room list before handing
+  off to `mempalace.miner.process_file`, which routes files to rooms by
+  path/keyword scoring. Mounted into the container read-only at
+  `/config/mempalace.yaml`.
 
 ## Troubleshooting
 
