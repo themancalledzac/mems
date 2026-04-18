@@ -1,0 +1,10 @@
+mempalace>=3.3.0
+mcp[cli]>=1.0.0
+uvicorn>=0.30.0
+starlette>=0.38.0
+pyyaml>=6.0,<7
+h2>=4.1.0
+# chromadb + sentence-transformers arrive transitively via mempalace;
+# listed explicitly here so Docker builds fail loudly if upstream drops them
+chromadb>=0.5.0
+sentence-transformers>=2.7.0
