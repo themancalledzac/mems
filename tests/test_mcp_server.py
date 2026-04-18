@@ -1,6 +1,3 @@
-import os
-from unittest.mock import patch
-
 from src.mcp_http_server import create_server
 
 

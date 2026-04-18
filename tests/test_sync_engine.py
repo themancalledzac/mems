@@ -3,9 +3,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-from src.sync_engine import SyncLedger, get_head_sha, get_changed_files, SyncEngine
+from src.sync_engine import SyncEngine, SyncLedger, get_changed_files, get_head_sha
 
 
 class TestSyncLedger:
@@ -15,28 +13,35 @@ class TestSyncLedger:
 
     def test_load_existing_ledger(self, tmp_palace):
         ledger_path = tmp_palace / "sync_ledger.json"
-        ledger_path.write_text(json.dumps({
-            "test-wing": {
-                "repo_path": "/repos/test",
-                "last_commit_sha": "abc123",
-                "last_sync_ts": "2026-04-15T10:00:00Z",
-                "files_indexed": 10,
-                "status": "synced",
-            }
-        }))
+        ledger_path.write_text(
+            json.dumps(
+                {
+                    "test-wing": {
+                        "repo_path": "/repos/test",
+                        "last_commit_sha": "abc123",
+                        "last_sync_ts": "2026-04-15T10:00:00Z",
+                        "files_indexed": 10,
+                        "status": "synced",
+                    }
+                }
+            )
+        )
         ledger = SyncLedger(ledger_path)
         assert ledger.entries["test-wing"]["status"] == "synced"
 
     def test_update_and_save(self, tmp_palace):
         ledger_path = tmp_palace / "sync_ledger.json"
         ledger = SyncLedger(ledger_path)
-        ledger.update("my-wing", {
-            "repo_path": "/repos/mine",
-            "last_commit_sha": "def456",
-            "last_sync_ts": "2026-04-15T11:00:00Z",
-            "files_indexed": 5,
-            "status": "synced",
-        })
+        ledger.update(
+            "my-wing",
+            {
+                "repo_path": "/repos/mine",
+                "last_commit_sha": "def456",
+                "last_sync_ts": "2026-04-15T11:00:00Z",
+                "files_indexed": 5,
+                "status": "synced",
+            },
+        )
         ledger.save()
 
         reloaded = SyncLedger(ledger_path)
@@ -113,8 +118,12 @@ class TestSyncEngine:
             data_path=str(tmp_palace),
         )
 
-        with patch("src.sync_engine.scan_project", return_value=[mock_repo / "hello.py"]) as mock_scan, \
-             patch("src.sync_engine.process_file") as mock_process:
+        with (
+            patch(
+                "src.sync_engine.scan_project", return_value=[mock_repo / "hello.py"]
+            ) as mock_scan,
+            patch("src.sync_engine.process_file") as mock_process,
+        ):
             engine.full_sync()
 
         mock_scan.assert_called_once()
@@ -151,13 +160,16 @@ class TestSyncEngine:
 
         # Simulate a previous full sync
         sha = get_head_sha(str(mock_repo))
-        engine.ledger.update("test-wing", {
-            "repo_path": str(mock_repo),
-            "last_commit_sha": sha,
-            "last_sync_ts": "2026-04-15T10:00:00Z",
-            "files_indexed": 1,
-            "status": "synced",
-        })
+        engine.ledger.update(
+            "test-wing",
+            {
+                "repo_path": str(mock_repo),
+                "last_commit_sha": sha,
+                "last_sync_ts": "2026-04-15T10:00:00Z",
+                "files_indexed": 1,
+                "status": "synced",
+            },
+        )
 
         with patch("src.sync_engine.process_file") as mock_process:
             engine.incremental_sync()
@@ -174,13 +186,16 @@ class TestSyncEngine:
         )
 
         old_sha = get_head_sha(str(mock_repo))
-        engine.ledger.update("test-wing", {
-            "repo_path": str(mock_repo),
-            "last_commit_sha": old_sha,
-            "last_sync_ts": "2026-04-15T10:00:00Z",
-            "files_indexed": 1,
-            "status": "synced",
-        })
+        engine.ledger.update(
+            "test-wing",
+            {
+                "repo_path": str(mock_repo),
+                "last_commit_sha": old_sha,
+                "last_sync_ts": "2026-04-15T10:00:00Z",
+                "files_indexed": 1,
+                "status": "synced",
+            },
+        )
 
         # Add a new file and commit
         (mock_repo / "added.py").write_text("y = 2\n")
@@ -211,8 +226,12 @@ class TestSyncEngine:
             data_path=str(tmp_palace),
         )
 
-        with patch("src.sync_engine.scan_project", return_value=[mock_repo / "hello.py"]) as mock_scan, \
-             patch("src.sync_engine.process_file") as mock_process:
+        with (
+            patch(
+                "src.sync_engine.scan_project", return_value=[mock_repo / "hello.py"]
+            ) as mock_scan,
+            patch("src.sync_engine.process_file") as mock_process,
+        ):
             engine.full_sync(wing_name="test-wing")
 
         # Only test-wing should be synced

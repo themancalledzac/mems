@@ -4,8 +4,8 @@ import os
 
 from mcp.server.fastmcp import FastMCP
 
-from src.user_wing import UserWing
 from src.tools import handle_sync, handle_sync_status
+from src.user_wing import UserWing
 
 
 def create_server(

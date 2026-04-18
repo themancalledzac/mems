@@ -1,19 +1,20 @@
 """User Wing — persistent user context organized by thought type."""
 
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from mempalace.palace import get_collection
 
-
-VALID_HALLS = frozenset({
-    "questions",
-    "discoveries",
-    "frustrations",
-    "goals",
-    "decisions",
-    "observations",
-})
+VALID_HALLS = frozenset(
+    {
+        "questions",
+        "discoveries",
+        "frustrations",
+        "goals",
+        "decisions",
+        "observations",
+    }
+)
 
 DEDUP_THRESHOLD = 0.15
 
@@ -23,7 +24,9 @@ class UserWing:
 
     def __init__(self, palace_path: str):
         self.palace_path = palace_path
-        self.collection = get_collection(palace_path, collection_name="mempalace_drawers", create=True)
+        self.collection = get_collection(
+            palace_path, collection_name="mempalace_drawers", create=True
+        )
 
     def write(
         self,
@@ -47,10 +50,12 @@ class UserWing:
             self.collection.upsert(
                 ids=[existing["id"]],
                 documents=[content],
-                metadatas=[{
-                    **existing["metadata"],
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                }],
+                metadatas=[
+                    {
+                        **existing["metadata"],
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                ],
             )
             return {"status": "updated", "id": existing["id"], "hall": hall}
 
@@ -110,15 +115,17 @@ class UserWing:
         for i, doc_id in enumerate(results["ids"][0]):
             meta = results["metadatas"][0][i] if results.get("metadatas") else {}
             dist = results["distances"][0][i] if results.get("distances") else None
-            formatted.append({
-                "id": doc_id,
-                "content": results["documents"][0][i],
-                "hall": meta.get("hall", ""),
-                "topic": meta.get("topic", ""),
-                "source_wing": meta.get("source_wing"),
-                "timestamp": meta.get("timestamp", ""),
-                "distance": dist,
-            })
+            formatted.append(
+                {
+                    "id": doc_id,
+                    "content": results["documents"][0][i],
+                    "hall": meta.get("hall", ""),
+                    "topic": meta.get("topic", ""),
+                    "source_wing": meta.get("source_wing"),
+                    "timestamp": meta.get("timestamp", ""),
+                    "distance": dist,
+                }
+            )
 
         return {"query": query, "results": formatted}
 
@@ -280,7 +287,9 @@ class UserWing:
 
         return {"candidates": len(candidates), "pruned": len(candidates)}
 
-    def _find_duplicate_in_topic(self, topic: str, content: str, hall: str | None = None) -> dict | None:
+    def _find_duplicate_in_topic(
+        self, topic: str, content: str, hall: str | None = None
+    ) -> dict | None:
         """Check if near-duplicate exists in the target topic."""
         where_conditions = [{"wing": "user"}, {"topic": topic}]
         if hall:

@@ -1,6 +1,4 @@
-import pytest
-
-from src.user_wing import UserWing, VALID_HALLS
+from src.user_wing import VALID_HALLS, UserWing
 
 
 class TestUserWingWrite:
@@ -100,7 +98,9 @@ class TestUserWingSummary:
         wing.write(hall="decisions", content="Chose Go over Rust for backend", topic="backend")
         wing.write(hall="frustrations", content="JDBC errors are useless", topic="backend")
         wing.write(hall="discoveries", content="CLIP ViT-L/14 is better", topic="ml")
-        wing.write(hall="questions", content="How does CloudFront invalidation work?", topic="infra")
+        wing.write(
+            hall="questions", content="How does CloudFront invalidation work?", topic="infra"
+        )
         wing.write(hall="observations", content="BoxTree slows above 200 images", topic="perf")
 
         summary = wing.summary()
@@ -134,7 +134,7 @@ class TestUserWingStatus:
 
 
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 class TestUserWingMergeTopic:
@@ -183,14 +183,16 @@ class TestUserWingPrune:
         wing.collection.upsert(
             ids=[drawer_id],
             documents=["very old thought"],
-            metadatas=[{
-                "wing": "user",
-                "hall": "observations",
-                "topic": "old-stuff",
-                "timestamp": old_time,
-                "confidence": 0.5,
-                "added_by": "user-wing",
-            }],
+            metadatas=[
+                {
+                    "wing": "user",
+                    "hall": "observations",
+                    "topic": "old-stuff",
+                    "timestamp": old_time,
+                    "confidence": 0.5,
+                    "added_by": "user-wing",
+                }
+            ],
         )
 
         result = wing.prune(hall="observations", older_than_days=90, dry_run=False)
@@ -201,5 +203,7 @@ class TestUserWingPrune:
         wing.write(hall="frustrations", content="X is annoying", topic="temp-issue")
         wing.write(hall="frustrations", content="Y is important", topic="real-issue")
 
-        result = wing.prune(hall="frustrations", topic="temp-issue", older_than_days=0, dry_run=False)
+        result = wing.prune(
+            hall="frustrations", topic="temp-issue", older_than_days=0, dry_run=False
+        )
         assert result["pruned"] >= 1
