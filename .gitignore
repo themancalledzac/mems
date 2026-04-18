@@ -10,3 +10,11 @@ build/
 chroma/
 sync_ledger.json
 .pytest_cache/
+
+# mems per-user state
+config/repos.json
+docker-compose.override.yml
+exports/*
+!exports/.gitkeep
+palace/
+.todo/
