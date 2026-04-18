@@ -6,9 +6,21 @@ from mcp.server.fastmcp import FastMCP
 
 from src.tools import (
     handle_check_logs,
+    handle_create_tunnel,
+    handle_delete_drawer,
+    handle_delete_tunnel,
+    handle_diary_read,
+    handle_diary_write,
     handle_export_wing,
+    handle_find_tunnels,
     handle_get_logs_recent,
+    handle_kg_add,
+    handle_kg_query,
+    handle_kg_stats,
+    handle_kg_time,
+    handle_list_drawers,
     handle_list_rooms,
+    handle_list_tunnels,
     handle_list_wings,
     handle_resync,
     handle_search,
@@ -16,6 +28,9 @@ from src.tools import (
     handle_status,
     handle_sync,
     handle_sync_status,
+    handle_traverse,
+    handle_tunnel_read,
+    handle_update_drawer,
 )
 from src.user_wing import UserWing
 
@@ -215,6 +230,173 @@ def create_server(
     def mempalace_export_wing(slug: str) -> dict:
         """Export a wing as a portable .wingpack bundle."""
         return handle_export_wing(palace_path, slug=slug)
+
+    # --- Phase 4B: KG tools (4) ---
+    # Note: upstream mempalace.mcp_server binds `_kg` to a palace path at
+    # import time. These tools work correctly in the container (one fixed
+    # palace) but cannot be retargeted per-call in tests.
+
+    @mcp.tool()
+    def mempalace_kg_query(
+        entity: str,
+        as_of: str | None = None,
+        direction: str = "both",
+    ) -> dict:
+        """Query the knowledge graph for relationships involving an entity."""
+        return handle_kg_query(palace_path, entity=entity, as_of=as_of, direction=direction)
+
+    @mcp.tool()
+    def mempalace_kg_add(
+        subject: str,
+        predicate: str,
+        object: str,  # noqa: A002 — matches upstream signature
+        valid_from: str | None = None,
+        source_closet: str | None = None,
+    ) -> dict:
+        """Add a (subject, predicate, object) triple to the knowledge graph."""
+        return handle_kg_add(
+            palace_path,
+            subject=subject,
+            predicate=predicate,
+            object_=object,
+            valid_from=valid_from,
+            source_closet=source_closet,
+        )
+
+    @mcp.tool()
+    def mempalace_kg_time(entity: str | None = None) -> dict:
+        """Chronological timeline of KG facts, optionally for a single entity."""
+        return handle_kg_time(palace_path, entity=entity)
+
+    @mcp.tool()
+    def mempalace_kg_stats() -> dict:
+        """Knowledge graph overview: entities, triples, relation types."""
+        return handle_kg_stats(palace_path)
+
+    # TODO: mempalace_kg_time_kv — no upstream tool_kg_time_kv; skipped.
+    # See Phase 4B report.
+
+    # --- Phase 4B: Graph traversal (2) ---
+
+    @mcp.tool()
+    def mempalace_traverse(start_room: str, max_hops: int = 2) -> dict:
+        """Walk the palace graph from a starting room."""
+        return handle_traverse(palace_path, start_room=start_room, max_hops=max_hops)
+
+    @mcp.tool()
+    def mempalace_find_tunnels(
+        wing_a: str | None = None,
+        wing_b: str | None = None,
+    ) -> dict:
+        """Find rooms that bridge two wings."""
+        return handle_find_tunnels(palace_path, wing_a=wing_a, wing_b=wing_b)
+
+    # --- Phase 4B: Drawer ops (3) ---
+
+    @mcp.tool()
+    def mempalace_list_drawers(
+        wing: str | None = None,
+        room: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict:
+        """List drawers with pagination. Optional wing/room filter."""
+        return handle_list_drawers(
+            palace_path,
+            wing=wing,
+            room=room,
+            limit=limit,
+            offset=offset,
+        )
+
+    @mcp.tool()
+    def mempalace_update_drawer(
+        drawer_id: str,
+        content: str | None = None,
+        wing: str | None = None,
+        room: str | None = None,
+    ) -> dict:
+        """Update an existing drawer's content and/or metadata."""
+        return handle_update_drawer(
+            palace_path,
+            drawer_id=drawer_id,
+            content=content,
+            wing=wing,
+            room=room,
+        )
+
+    @mcp.tool()
+    def mempalace_delete_drawer(drawer_id: str) -> dict:
+        """Delete a single drawer by ID."""
+        return handle_delete_drawer(palace_path, drawer_id=drawer_id)
+
+    # TODO: mempalace_kg_drawer — plan item has no upstream analog and no
+    # clear semantics distinct from kg_add; skipped. See Phase 4B report.
+
+    # --- Phase 4B: Tunnels (4) ---
+
+    @mcp.tool()
+    def mempalace_create_tunnel(
+        source_wing: str,
+        source_room: str,
+        target_wing: str,
+        target_room: str,
+        label: str = "",
+        source_drawer_id: str | None = None,
+        target_drawer_id: str | None = None,
+    ) -> dict:
+        """Create an explicit cross-wing tunnel between two rooms."""
+        return handle_create_tunnel(
+            palace_path,
+            source_wing=source_wing,
+            source_room=source_room,
+            target_wing=target_wing,
+            target_room=target_room,
+            label=label,
+            source_drawer_id=source_drawer_id,
+            target_drawer_id=target_drawer_id,
+        )
+
+    @mcp.tool()
+    def mempalace_delete_tunnel(tunnel_id: str) -> dict:
+        """Delete an explicit tunnel by its ID."""
+        return handle_delete_tunnel(palace_path, tunnel_id=tunnel_id)
+
+    @mcp.tool()
+    def mempalace_list_tunnels(wing: str | None = None) -> dict:
+        """List explicit cross-wing tunnels, optionally filtered by wing."""
+        return handle_list_tunnels(palace_path, wing=wing)
+
+    @mcp.tool()
+    def mempalace_tunnel_read(wing: str, room: str) -> dict:
+        """Follow tunnels from a room to see connected drawers in other wings."""
+        return handle_tunnel_read(palace_path, wing=wing, room=room)
+
+    # --- Phase 4B: Diary (2) ---
+    # diary_read_time in plan has no upstream analog (tool_diary_read takes
+    # last_n, not a time range). Skipped.
+
+    @mcp.tool()
+    def mempalace_diary_write(
+        agent_name: str,
+        entry: str,
+        topic: str = "general",
+    ) -> dict:
+        """Append a diary entry for an agent."""
+        return handle_diary_write(
+            palace_path,
+            agent_name=agent_name,
+            entry=entry,
+            topic=topic,
+        )
+
+    @mcp.tool()
+    def mempalace_diary_read(agent_name: str, last_n: int = 10) -> dict:
+        """Read an agent's recent diary entries."""
+        return handle_diary_read(palace_path, agent_name=agent_name, last_n=last_n)
+
+    # TODO: mempalace_diary_read_time — no upstream tool takes a time window
+    # for diary reads (only last_n); skipped. See Phase 4B report.
 
     return mcp
 

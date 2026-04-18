@@ -12,6 +12,31 @@ EXPECTED_PHASE_4A_TOOLS = {
     "mempalace_export_wing",
 }
 
+# Phase 4B: 4 KG + 2 graph + 3 drawer + 4 tunnel + 2 diary = 15 tools.
+# Skipped (no upstream support): kg_time_kv, kg_drawer, diary_read_time.
+EXPECTED_PHASE_4B_TOOLS = {
+    # KG (4)
+    "mempalace_kg_query",
+    "mempalace_kg_add",
+    "mempalace_kg_time",
+    "mempalace_kg_stats",
+    # Graph (2)
+    "mempalace_traverse",
+    "mempalace_find_tunnels",
+    # Drawers (3)
+    "mempalace_list_drawers",
+    "mempalace_update_drawer",
+    "mempalace_delete_drawer",
+    # Tunnels (4)
+    "mempalace_create_tunnel",
+    "mempalace_delete_tunnel",
+    "mempalace_list_tunnels",
+    "mempalace_tunnel_read",
+    # Diary (2)
+    "mempalace_diary_write",
+    "mempalace_diary_read",
+}
+
 
 class TestCreateServer:
     def test_server_has_custom_tools(self, tmp_palace, tmp_config):
@@ -44,13 +69,24 @@ class TestCreateServer:
         assert not missing, f"missing tools: {missing}"
 
     def test_server_tool_count(self, tmp_palace, tmp_config):
-        """8 original + 9 Phase 4A = 17 total custom tools."""
+        """8 original + 9 Phase 4A + 15 Phase 4B = 32 total custom tools."""
         server = create_server(
             palace_path=str(tmp_palace),
             config_path=str(tmp_config),
         )
         tools = server._tool_manager.list_tools()
-        assert len(tools) == 17
+        assert len(tools) == 32
+
+    def test_phase_4b_tools_registered(self, tmp_palace, tmp_config):
+        """Phase 4B tools (KG, graph, drawers, tunnels, diary) are registered."""
+        server = create_server(
+            palace_path=str(tmp_palace),
+            config_path=str(tmp_config),
+        )
+        tools = server._tool_manager.list_tools()
+        names = {t.name for t in tools}
+        missing = EXPECTED_PHASE_4B_TOOLS - names
+        assert not missing, f"missing Phase 4B tools: {missing}"
 
 
 class TestToolSchemas:

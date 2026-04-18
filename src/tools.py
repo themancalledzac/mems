@@ -25,10 +25,46 @@
 #   mempalace_search_all      -> wraps mempalace.searcher.search_memories (no filters)
 #   mempalace_resync          -> delegates to handle_sync (full=full_refresh)
 #   mempalace_export_wing     -> local: assembles wing_meta, calls wing_pack.write_wingpack
+#
+# Phase 4B wiring (all upstream-wrapped via mempalace.mcp_server.tool_*):
+#   All 4B handlers call _bind_palace(palace_path) first to set
+#   MEMPALACE_PALACE_PATH. `_config.palace_path` is a property that re-reads
+#   the env on every access, so chroma-backed tools (drawers, tunnels, search,
+#   diary) respect the current target.
+#
+#   CAVEAT — `_kg` is a module-level KnowledgeGraph singleton bound at
+#   mempalace.mcp_server import time. KG tools (kg_query, kg_add, kg_time,
+#   kg_stats) will always read/write the KG sqlite that was resolved on first
+#   import. In a single-palace container (our runtime target), this is fine.
+#   In tests with tmp_path, these tools will hit whatever KG DB the first
+#   import resolved — so registration is asserted, behavior isn't.
+#
+#   kg_query        -> wraps tool_kg_query (entity, as_of, direction)
+#   kg_add          -> wraps tool_kg_add   (subject, predicate, object_, ...)
+#   kg_time         -> wraps tool_kg_timeline (entity)
+#   kg_stats        -> wraps tool_kg_stats ()
+#   traverse        -> wraps tool_traverse_graph (start_room, max_hops)
+#   find_tunnels    -> wraps tool_find_tunnels (wing_a, wing_b)
+#   list_drawers    -> wraps tool_list_drawers (wing, room, limit, offset)
+#   update_drawer   -> wraps tool_update_drawer (drawer_id, content, wing, room)
+#   delete_drawer   -> wraps tool_delete_drawer (drawer_id)
+#   create_tunnel   -> wraps tool_create_tunnel (source_wing, source_room, ...)
+#   delete_tunnel   -> wraps tool_delete_tunnel (tunnel_id)
+#   list_tunnels    -> wraps tool_list_tunnels (wing)
+#   tunnel_read     -> wraps tool_follow_tunnels (wing, room) — plan name
+#                      "tunnel_read" maps to upstream "follow_tunnels"
+#   diary_write     -> wraps tool_diary_write (agent_name, entry, topic)
+#   diary_read      -> wraps tool_diary_read (agent_name, last_n)
+#
+# Plan item kg_time_kv was not wirable — there is no upstream tool_kg_time_kv
+# and no obvious KG method for timeline-with-key-value filtering. Skipped.
+# Plan item "kg_drawer" likewise had no upstream analog and no clear semantics
+# distinct from kg_add; skipped.
 """
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -95,9 +131,7 @@ def _drawers_collection(palace_path: str):
     Matches the pattern in src.user_wing.UserWing — both write to the same
     `mempalace_drawers` collection, distinguished by metadata.
     """
-    return get_collection(
-        palace_path, collection_name="mempalace_drawers", create=True
-    )
+    return get_collection(palace_path, collection_name="mempalace_drawers", create=True)
 
 
 def _fetch_all_metadata(col, where: dict | None = None) -> list[dict]:
@@ -130,12 +164,7 @@ def _fetch_all_metadata(col, where: dict | None = None) -> list[dict]:
 
 def _ts_of(meta: dict) -> str:
     """Pick the best timestamp-ish field we have. Empty string if absent."""
-    return (
-        meta.get("timestamp")
-        or meta.get("created_at")
-        or meta.get("ts")
-        or ""
-    )
+    return meta.get("timestamp") or meta.get("created_at") or meta.get("ts") or ""
 
 
 # --- navigation handlers -----------------------------------------------------
@@ -369,3 +398,220 @@ def handle_export_wing(
         "drawer_count": wing_meta["drawer_count"],
         "room_count": len(rooms_list),
     }
+
+
+# --- Phase 4B: upstream-wrapped handlers -------------------------------------
+
+
+def _bind_palace(palace_path: str) -> None:
+    """Point mempalace.mcp_server's env-bound config at ``palace_path``.
+
+    The upstream module's ``_config.palace_path`` is a property that reads
+    MEMPALACE_PALACE_PATH on each access, so setting this env var is enough
+    for chroma-backed tools. The KG singleton (``_kg``) is bound at import
+    time and is NOT retargeted — that's a runtime-only limitation documented
+    at the top of this file.
+    """
+    os.environ["MEMPALACE_PALACE_PATH"] = palace_path
+
+
+# --- KG -----------------------------------------------------------------------
+
+
+def handle_kg_query(
+    palace_path: str,
+    entity: str,
+    as_of: str | None = None,
+    direction: str = "both",
+) -> dict:
+    """Query KG for relationships involving an entity.
+
+    Runtime-only: KG is bound to the palace path at module import.
+    """
+    from mempalace.mcp_server import tool_kg_query
+
+    _bind_palace(palace_path)
+    return tool_kg_query(entity=entity, as_of=as_of, direction=direction)
+
+
+def handle_kg_add(
+    palace_path: str,
+    subject: str,
+    predicate: str,
+    object_: str,
+    valid_from: str | None = None,
+    source_closet: str | None = None,
+) -> dict:
+    """Add a triple to the KG.
+
+    ``object_`` is renamed internally to dodge the Python builtin; upstream
+    expects ``object``.
+    """
+    from mempalace.mcp_server import tool_kg_add
+
+    _bind_palace(palace_path)
+    return tool_kg_add(
+        subject=subject,
+        predicate=predicate,
+        object=object_,
+        valid_from=valid_from,
+        source_closet=source_closet,
+    )
+
+
+def handle_kg_time(palace_path: str, entity: str | None = None) -> dict:
+    """Chronological KG timeline, optionally scoped to one entity."""
+    from mempalace.mcp_server import tool_kg_timeline
+
+    _bind_palace(palace_path)
+    return tool_kg_timeline(entity=entity)
+
+
+def handle_kg_stats(palace_path: str) -> dict:
+    """KG overview: entity/triple/relation counts."""
+    from mempalace.mcp_server import tool_kg_stats
+
+    _bind_palace(palace_path)
+    return tool_kg_stats()
+
+
+# --- Graph traversal ---------------------------------------------------------
+
+
+def handle_traverse(palace_path: str, start_room: str, max_hops: int = 2) -> dict:
+    """Walk the palace graph from a starting room."""
+    from mempalace.mcp_server import tool_traverse_graph
+
+    _bind_palace(palace_path)
+    return tool_traverse_graph(start_room=start_room, max_hops=max_hops)
+
+
+def handle_find_tunnels(
+    palace_path: str,
+    wing_a: str | None = None,
+    wing_b: str | None = None,
+) -> dict:
+    """Find bridge-rooms between two wings."""
+    from mempalace.mcp_server import tool_find_tunnels
+
+    _bind_palace(palace_path)
+    return tool_find_tunnels(wing_a=wing_a, wing_b=wing_b)
+
+
+# --- Drawer ops --------------------------------------------------------------
+
+
+def handle_list_drawers(
+    palace_path: str,
+    wing: str | None = None,
+    room: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    """List drawers with pagination, optional wing/room filter."""
+    from mempalace.mcp_server import tool_list_drawers
+
+    _bind_palace(palace_path)
+    return tool_list_drawers(wing=wing, room=room, limit=limit, offset=offset)
+
+
+def handle_update_drawer(
+    palace_path: str,
+    drawer_id: str,
+    content: str | None = None,
+    wing: str | None = None,
+    room: str | None = None,
+) -> dict:
+    """Update an existing drawer's content and/or metadata."""
+    from mempalace.mcp_server import tool_update_drawer
+
+    _bind_palace(palace_path)
+    return tool_update_drawer(drawer_id=drawer_id, content=content, wing=wing, room=room)
+
+
+def handle_delete_drawer(palace_path: str, drawer_id: str) -> dict:
+    """Delete a drawer by id."""
+    from mempalace.mcp_server import tool_delete_drawer
+
+    _bind_palace(palace_path)
+    return tool_delete_drawer(drawer_id=drawer_id)
+
+
+# --- Tunnels -----------------------------------------------------------------
+
+
+def handle_create_tunnel(
+    palace_path: str,
+    source_wing: str,
+    source_room: str,
+    target_wing: str,
+    target_room: str,
+    label: str = "",
+    source_drawer_id: str | None = None,
+    target_drawer_id: str | None = None,
+) -> dict:
+    """Create an explicit cross-wing tunnel."""
+    from mempalace.mcp_server import tool_create_tunnel
+
+    _bind_palace(palace_path)
+    return tool_create_tunnel(
+        source_wing=source_wing,
+        source_room=source_room,
+        target_wing=target_wing,
+        target_room=target_room,
+        label=label,
+        source_drawer_id=source_drawer_id,
+        target_drawer_id=target_drawer_id,
+    )
+
+
+def handle_delete_tunnel(palace_path: str, tunnel_id: str) -> dict:
+    """Delete an explicit tunnel by id."""
+    from mempalace.mcp_server import tool_delete_tunnel
+
+    _bind_palace(palace_path)
+    return tool_delete_tunnel(tunnel_id=tunnel_id)
+
+
+def handle_list_tunnels(palace_path: str, wing: str | None = None) -> dict:
+    """List explicit cross-wing tunnels."""
+    from mempalace.mcp_server import tool_list_tunnels
+
+    _bind_palace(palace_path)
+    return tool_list_tunnels(wing=wing)
+
+
+def handle_tunnel_read(palace_path: str, wing: str, room: str) -> dict:
+    """Follow tunnels from a room to see connected drawers in other wings.
+
+    Wraps upstream ``tool_follow_tunnels``. The plan's ``tunnel_read`` name
+    matches the "read what's on the other side of the tunnel" semantics.
+    """
+    from mempalace.mcp_server import tool_follow_tunnels
+
+    _bind_palace(palace_path)
+    return tool_follow_tunnels(wing=wing, room=room)
+
+
+# --- Diary -------------------------------------------------------------------
+
+
+def handle_diary_write(
+    palace_path: str,
+    agent_name: str,
+    entry: str,
+    topic: str = "general",
+) -> dict:
+    """Append a diary entry for an agent."""
+    from mempalace.mcp_server import tool_diary_write
+
+    _bind_palace(palace_path)
+    return tool_diary_write(agent_name=agent_name, entry=entry, topic=topic)
+
+
+def handle_diary_read(palace_path: str, agent_name: str, last_n: int = 10) -> dict:
+    """Read recent diary entries for an agent."""
+    from mempalace.mcp_server import tool_diary_read
+
+    _bind_palace(palace_path)
+    return tool_diary_read(agent_name=agent_name, last_n=last_n)
