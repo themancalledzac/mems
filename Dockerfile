@@ -16,7 +16,8 @@ ENV PALACE_PATH=/data/palace \
     MEMORY_PORT=8080 \
     MEMPALACE_EXPORTS_DIR=/data/exports \
     MEMPALACE_EMBEDDING_MODEL=all-MiniLM-L6-v2 \
-    WING_USER_RETENTION_DAYS=7
+    WING_USER_RETENTION_DAYS=7 \
+    MEMPALACE_HOOKS_AUTO_SAVE=true
 
 # Install project + deps. Copy pyproject + sources needed for the build backend.
 COPY pyproject.toml README.md ./
