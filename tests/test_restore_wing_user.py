@@ -69,9 +69,10 @@ def test_restore_only_touches_user_wing(tmp_path):
     module must not implement it — guard against any code construct that invokes
     from-sqlite mode (kwarg form or CLI flag).
     """
-    from src import restore_wing_user
     import ast
     import inspect
+
+    from src import restore_wing_user
 
     src = inspect.getsource(restore_wing_user)
     # Sanity: the module should reference user_wing/halls.

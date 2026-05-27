@@ -240,8 +240,10 @@ class TestSyncEngine:
         assert engine.ledger.get("other-wing") is None
 
 
-def test_full_sync_calls_mempalace_sync_after_ingest(monkeypatch, tmp_config, tmp_palace, mock_repo):
-    """SyncEngine.full_sync should invoke upstream `mempalace sync` after ingest to prune stale drawers."""
+def test_full_sync_calls_mempalace_sync_after_ingest(
+    monkeypatch, tmp_config, tmp_palace, mock_repo
+):
+    """full_sync should invoke `mempalace sync` after ingest to prune stale drawers."""
     calls = []
     real_run = subprocess.run
 
