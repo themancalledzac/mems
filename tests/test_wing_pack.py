@@ -19,17 +19,17 @@ def sample_wing_meta():
             {"name": "auth", "keywords": ["jwt", "login"], "tags": ["security"]},
             {"name": "general", "keywords": [], "tags": []},
         ],
-        "prompts": {"tunnels": []},
     }
 
 
-def test_write_wingpack_emits_six_members(tmp_path, sample_wing_meta):
+def test_write_wingpack_emits_four_members(tmp_path, sample_wing_meta):
     out = write_wingpack(sample_wing_meta, output_dir=tmp_path)
     assert out.exists()
     with zipfile.ZipFile(out) as zf:
         names = set(zf.namelist())
-    expected = {"manifest.json", "wingpack.yaml", "keywords.json", "rooms.json", "prompts.json"}
+    expected = {"manifest.json", "wingpack.yaml", "keywords.json", "rooms.json"}
     assert expected <= names
+    assert "prompts.json" not in names
 
 
 def test_manifest_records_embedding_metadata(tmp_path, sample_wing_meta):

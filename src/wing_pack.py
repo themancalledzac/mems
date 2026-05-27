@@ -49,11 +49,6 @@ class WingpackBuilder:
         ]
         self._members["rooms.json"] = json.dumps(body, indent=2).encode()
 
-    def add_prompts(self) -> None:
-        self._members["prompts.json"] = json.dumps(
-            self.meta.get("prompts", {"tunnels": []}), indent=2
-        ).encode()
-
     def add_sync_manifest(self, sync_manifest: dict) -> None:
         self._members["sync_manifest.json"] = json.dumps(sync_manifest, indent=2).encode()
 
@@ -62,7 +57,6 @@ class WingpackBuilder:
         self.add_wingpack_yaml()
         self.add_keywords()
         self.add_rooms()
-        self.add_prompts()
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:

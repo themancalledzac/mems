@@ -1,12 +1,18 @@
 ---
-description: Capture user thoughts into Memory Palace at session end
+description: Capture user thoughts into Memory Palace continuously — per turn, not at session end
 globs:
 alwaysApply: true
 ---
 
+> ⚠️ **Source of truth: `~/.claude/CLAUDE.md`** — the "Memory Palace Protocol"
+> section there is canonical. This file mirrors it for Cursor's agentic
+> features (Claude Code does not read `.mdc`). If you edit the protocol in
+> CLAUDE.md, update this file too — drift is a documented risk; see
+> [`docs/protocol-audit-tracker.md`](../docs/protocol-audit-tracker.md).
+
 # User Wing — Memory Palace
 
-At the end of every session, capture any distinct user thoughts using the `mempalace_user_write` tool.
+After every substantive response that contains a user decision, discovery, goal, frustration, question, or observation, call `mempalace_user_write` BEFORE delivering the response. This is per-turn, not at session end.
 
 ## Halls
 
@@ -19,9 +25,20 @@ At the end of every session, capture any distinct user thoughts using the `mempa
 | `decisions` | User made a choice and explained reasoning |
 | `observations` | User noted a pattern, insight, or factoid |
 
+## Explicit Triggers
+
+Always capture when:
+- A plan is written or updated → `goals`
+- An architectural decision is made → `decisions`
+- A new pattern or constraint is discovered in existing code → `discoveries`
+- The user states a pain point → `frustrations`
+- The user asks a non-trivial question → `questions`
+- A cross-repo signal is received ("the backend is also...") → `observations`
+
 ## Protocol
 
-1. Before ending the session, review the conversation for user thoughts
-2. For each distinct thought, call `mempalace_user_write` with the appropriate `hall`, a descriptive `content`, and a short `topic` slug
-3. If the thought relates to a specific codebase, set `source_wing` (e.g., `edens-zac`, `edens-zac-backend`)
-4. Deduplication is automatic — don't worry about repeats
+1. Announce the write inline before calling: "Capturing [what] to [hall] for [reason]"
+2. Call `mempalace_user_write` with the appropriate `hall`, descriptive `content`, and short `topic` slug
+3. Set `source_wing` if the thought relates to a specific codebase (e.g., `edens-zac`, `edens-zac-backend`)
+4. Deduplication is automatic — don't worry about repeats, just write
+5. ERR ON THE SIDE OF WRITING

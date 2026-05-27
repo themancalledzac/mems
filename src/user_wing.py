@@ -195,8 +195,13 @@ class UserWing:
             "halls": halls,
             "recent_topics": sorted(topics),
             "guidance": (
-                "Capture user context at session end via mempalace_user_write. "
-                "Call mempalace_user_summary at session start for context."
+                "Capture user thoughts continuously via mempalace_user_write — "
+                "every substantive response with a decision, discovery, goal, or "
+                "observation triggers a write BEFORE the response is delivered. "
+                "This is per-turn, not session-end. Announce writes inline "
+                "(\"Capturing X to hall Y\") so the user can see what is captured. "
+                "Call mempalace_user_summary once per session, cite what is relevant, "
+                "or state \"no prior context relevant\" before proceeding."
             ),
         }
 

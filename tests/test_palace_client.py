@@ -101,7 +101,7 @@ def test_call_builds_correct_jsonrpc_envelope_and_headers():
 
     # Inspect the tools/call request (the third one).
     req = uo.call_args_list[2].args[0]
-    assert req.full_url == "http://localhost:8787/mcp/"
+    assert req.full_url == "http://localhost:8787/mcp"
     assert req.get_method() == "POST"
     # Headers are lowercased by urllib.
     hdrs = {k.lower(): v for k, v in req.headers.items()}

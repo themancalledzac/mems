@@ -4,6 +4,12 @@ globs:
 alwaysApply: true
 ---
 
+> ⚠️ **Source of truth: `~/.claude/CLAUDE.md`** — the "Memory Palace Protocol"
+> section there is canonical. This file mirrors it for Cursor's agentic
+> features (Claude Code does not read `.mdc`). If you edit the protocol in
+> CLAUDE.md, update this file too — drift is a documented risk; see
+> [`docs/protocol-audit-tracker.md`](../docs/protocol-audit-tracker.md).
+
 # Memory Palace Discovery
 
 At the start of every session:

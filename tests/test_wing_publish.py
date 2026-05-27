@@ -15,7 +15,6 @@ def _bundle(tmp_path: Path, wing="my-wing", dim=384) -> Path:
         "embedding_dim": dim,
         "drawer_count": 1,
         "rooms": [{"name": "general", "keywords": []}],
-        "prompts": {"tunnels": []},
     }
     return write_wingpack(meta, tmp_path)
 

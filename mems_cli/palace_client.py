@@ -17,9 +17,8 @@ from typing import Any
 
 from mems_cli.common import get_server_url
 
-# Endpoint for FastMCP streamable-http. Trailing slash matters: FastMCP
-# mounts its handler at "/mcp" and redirects "/mcp" → "/mcp/".
-MCP_PATH = "/mcp/"
+# FastMCP mounts at "/mcp" (no trailing slash); "/mcp/" redirects back.
+MCP_PATH = "/mcp"
 HEALTH_PATH = "/health"
 
 # MCP protocol version this client speaks. Matches current mcp-python.
