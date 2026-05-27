@@ -1,74 +1,52 @@
 #!/bin/bash
-# Register the Memory Palace Agent-orientation PreToolUse hook in
-# ~/.claude/settings.json. Idempotent — skips if our hook command is
-# already present. Backs up the original to settings.json.bak.<UTC-ts>
-# before any change.
-set -e
-set -u
+# Register Memory Palace Claude Code hooks in ~/.claude/settings.json.
+# Three hooks installed idempotently:
+#   - PreToolUse: Agent  -> wrapper's pretooluse_agent_orientation.py
+#   - Stop               -> upstream's mempal_save_hook.sh (transcript auto-mine)
+#   - PreCompact         -> upstream's mempal_precompact_hook.sh (emergency save)
+# Backs up settings.json to settings.json.bak.<UTC-ts> on first mutation.
+#
+# Hook paths can be overridden via env vars for testing:
+#   HOOK_PRETOOLUSE_CMD, HOOK_STOP_CMD, HOOK_PRECOMPACT_CMD
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-SETTINGS="$HOME/.claude/settings.json"
-HOOK="$REPO_ROOT/integration/claude_code/pretooluse_agent_orientation.py"
+SETTINGS="${HOME}/.claude/settings.json"
+PRETOOLUSE="${HOOK_PRETOOLUSE_CMD:-$REPO_ROOT/integration/claude_code/pretooluse_agent_orientation.py}"
+STOP="${HOOK_STOP_CMD:-${HOME}/Code/mempalace/hooks/mempal_save_hook.sh}"
+PRECOMPACT="${HOOK_PRECOMPACT_CMD:-${HOME}/Code/mempalace/hooks/mempal_precompact_hook.sh}"
 
-if [[ ! -f "$HOOK" ]]; then
-    echo "error: missing $HOOK" >&2
+# Only enforce existence when the caller didn't supply a custom path.
+# Custom paths are typically used by tests pointing at stub binaries that
+# already exist (e.g. /bin/true), so re-checking them is redundant.
+if [[ -z "${HOOK_PRETOOLUSE_CMD:-}" && ! -f "$PRETOOLUSE" ]]; then
+    echo "error: missing $PRETOOLUSE" >&2
+    exit 1
+fi
+if [[ -z "${HOOK_STOP_CMD:-}" && ! -f "$STOP" ]]; then
+    echo "error: missing $STOP" >&2
+    echo "  install upstream mempalace: git clone https://github.com/MemPalace/mempalace.git $HOME/Code/mempalace" >&2
+    exit 1
+fi
+if [[ -z "${HOOK_PRECOMPACT_CMD:-}" && ! -f "$PRECOMPACT" ]]; then
+    echo "error: missing $PRECOMPACT" >&2
+    echo "  install upstream mempalace: git clone https://github.com/MemPalace/mempalace.git $HOME/Code/mempalace" >&2
     exit 1
 fi
 
+# chmod +x is best-effort; skip if we don't own the file (e.g. test stubs).
+for f in "$PRETOOLUSE" "$STOP" "$PRECOMPACT"; do
+    if [[ -f "$f" && -w "$f" ]]; then
+        chmod +x "$f" 2>/dev/null || true
+    fi
+done
+
 mkdir -p "$(dirname "$SETTINGS")"
 
-# Hand the merge to Python — settings.json is JSON, not line-oriented, and
-# bash + sed against nested JSON is a known foot-gun. Idempotency, backup,
-# and shape repair all live in one place.
-HOOK_CMD="$HOOK" SETTINGS_PATH="$SETTINGS" python3 - <<'PY'
-import json
-import os
-from datetime import datetime, timezone
-from pathlib import Path
-
-settings_path = Path(os.environ["SETTINGS_PATH"])
-hook_command = os.environ["HOOK_CMD"]
-
-if settings_path.exists():
-    original = settings_path.read_text()
-    settings = json.loads(original) if original.strip() else {}
-else:
-    original = ""
-    settings = {}
-
-if not isinstance(settings, dict):
-    raise SystemExit(f"error: {settings_path} is not a JSON object")
-
-# Already installed? No-op.
-pretool = ((settings.get("hooks") or {}).get("PreToolUse")) or []
-if isinstance(pretool, list) and any(
-    isinstance(h, dict) and h.get("command") == hook_command
-    for entry in pretool if isinstance(entry, dict)
-    for h in (entry.get("hooks") or [])
-):
-    print(f"skip — hook already present in {settings_path}")
-    raise SystemExit(0)
-
-# Backup before modifying.
-if original:
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup = settings_path.with_suffix(settings_path.suffix + f".bak.{ts}")
-    backup.write_text(original)
-    print(f"backup: {backup}")
-
-hooks = settings.setdefault("hooks", {})
-existing = hooks.get("PreToolUse")
-if not isinstance(existing, list):
-    existing = []
-    hooks["PreToolUse"] = existing
-existing.append({
-    "matcher": "Agent",
-    "hooks": [{"type": "command", "command": hook_command}],
-})
-
-settings_path.write_text(json.dumps(settings, indent=2) + "\n")
-print(f"installed Agent-orientation hook in {settings_path}")
-print(f"   command: {hook_command}")
-PY
+HOOK_PRETOOLUSE_CMD="$PRETOOLUSE" \
+HOOK_STOP_CMD="$STOP" \
+HOOK_PRECOMPACT_CMD="$PRECOMPACT" \
+SETTINGS_PATH="$SETTINGS" \
+python3 "$REPO_ROOT/integration/claude_code/hooks_install.py"
