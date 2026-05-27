@@ -29,7 +29,7 @@ See [`CONTEXT.md`](docs/historical/CONTEXT.md) for the original target-state spe
 
 ## Tech Stack
 
-Python 3.12, `mempalace>=3.3.6`, FastMCP (via `mcp[cli]`), uvicorn+starlette, chromadb 1.5.4+, sentence-transformers, hatchling, ruff, pytest. Docker Compose for runtime.
+Python 3.12, `mempalace>=3.3.5` (aspirational target 3.3.6 once it lands on PyPI for the silent-truncation fix), FastMCP (via `mcp[cli]`), uvicorn+starlette, chromadb 1.5.4+, sentence-transformers, hatchling, ruff, pytest. Docker Compose for runtime.
 
 ## Quickstart
 

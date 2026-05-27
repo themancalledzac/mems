@@ -9,7 +9,7 @@ description = "Memory Palace multi-repo orchestrator — wraps mempalace with wi
 requires-python = ">=3.12,<3.15"
 readme = "README.md"
 dependencies = [
-    "mempalace>=3.3.6",
+    "mempalace>=3.3.5",  # TODO: bump to >=3.3.6 once #1540 (silent-truncation fix) lands on PyPI
     "mcp[cli]>=1.0.0",
     "uvicorn>=0.30.0",
     "starlette>=0.38.0",
