@@ -143,6 +143,7 @@ class SyncEngine:
             except Exception as e:
                 self.ledger.mark_error(name, repo_path, str(e))
 
+        self._post_ingest_prune()
         self.ledger.save()
 
     def incremental_sync(self, wing_name: str | None = None):
@@ -199,7 +200,26 @@ class SyncEngine:
             except Exception as e:
                 self.ledger.mark_error(name, repo_path, str(e))
 
+        self._post_ingest_prune()
         self.ledger.save()
+
+    def _post_ingest_prune(self) -> None:
+        """Prune drawers whose source files were gitignored/deleted/moved.
+
+        Upstream cmd_sync handles this — runs against the same palace_path the
+        wrapper just wrote to (MEMPALACE_PALACE_PATH already set via _bind_palace).
+        Non-fatal: ingest already succeeded. Log + continue on failure.
+        """
+        try:
+            subprocess.run(
+                ["mempalace", "sync", "--apply"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+            print(f"warning: post-ingest mempalace sync skipped: {exc}", flush=True)
 
     def _delete_drawers_for_file(self, collection, source_file: str):
         """Remove all drawers originating from a deleted file."""

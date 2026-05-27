@@ -238,3 +238,44 @@ class TestSyncEngine:
         mock_scan.assert_called_once()
         assert engine.ledger.get("test-wing") is not None
         assert engine.ledger.get("other-wing") is None
+
+
+def test_full_sync_calls_mempalace_sync_after_ingest(monkeypatch, tmp_config, tmp_palace, mock_repo):
+    """SyncEngine.full_sync should invoke upstream `mempalace sync` after ingest to prune stale drawers."""
+    calls = []
+    real_run = subprocess.run
+
+    class R:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_subprocess_run(cmd, *args, **kwargs):
+        calls.append(cmd)
+        # Let git-related commands run for real (used by sync_engine for HEAD sha + diff).
+        if cmd and isinstance(cmd, list) and cmd[0] == "git":
+            return real_run(cmd, *args, **kwargs)
+        return R()
+
+    monkeypatch.setattr("src.sync_engine.subprocess.run", fake_subprocess_run)
+    monkeypatch.setattr("src.sync_engine.scan_project", lambda *a, **k: [])
+    monkeypatch.setattr("src.sync_engine.process_file", lambda *a, **k: None)
+
+    repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
+    (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
+
+    engine = SyncEngine(
+        config_path=str(tmp_config),
+        data_path=str(tmp_palace),
+    )
+
+    engine.full_sync()
+
+    # Look for `mempalace sync` in subprocess calls. Match the literal argv
+    # (cmd[0] == "mempalace" and "sync" appears as a separate argv token) so
+    # tmp_path strings that contain "mempalace"/"sync" don't false-positive.
+    sync_calls = [
+        c for c in calls
+        if isinstance(c, list) and len(c) >= 2 and c[0] == "mempalace" and "sync" in c
+    ]
+    assert sync_calls, f"expected `mempalace sync` post-ingest call; got {calls}"
