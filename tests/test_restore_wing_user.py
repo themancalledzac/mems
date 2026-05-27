@@ -59,3 +59,37 @@ def test_restore_noops_when_no_backup(tmp_path):
     palace.mkdir()
     result = restore_if_empty(palace, tmp_path / "empty_exports")
     assert result["action"] == "skipped"
+
+
+def test_restore_only_touches_user_wing(tmp_path):
+    """restore_wing_user must not import or re-upsert non-user-wing drawers.
+
+    General palace recovery is upstream's job (`mempalace repair --mode from-sqlite`,
+    added in 3.3.5 #1308). The docstring may *reference* that delegation, but the
+    module must not implement it — guard against any code construct that invokes
+    from-sqlite mode (kwarg form or CLI flag).
+    """
+    from src import restore_wing_user
+    import ast
+    import inspect
+
+    src = inspect.getsource(restore_wing_user)
+    # Sanity: the module should reference user_wing/halls.
+    assert "wing_user" in src or "user_wing" in src
+
+    # Strip docstrings and comments before checking for from-sqlite invocations,
+    # so the delegation note in the module docstring doesn't trip the guard.
+    tree = ast.parse(src)
+    string_constants = "\n".join(
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    )
+    code_only = src
+    for literal in string_constants.splitlines():
+        if literal.strip():
+            code_only = code_only.replace(literal, "")
+
+    assert 'mode="from-sqlite"' not in code_only and "--mode from-sqlite" not in code_only, (
+        "restore_wing_user should not duplicate mempalace repair --mode from-sqlite logic"
+    )

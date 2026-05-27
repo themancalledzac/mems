@@ -1,7 +1,19 @@
-"""Auto-restore wing_user from newest backup when the collection is empty.
+"""Auto-restore the user_wing slice from the most recent JSON backup on cold boot.
 
-Intended to run at startup (from entrypoint.sh) so that a fresh palace
-volume is seeded from the most recent ``wing_user_backup_*.json`` dump.
+This module is intentionally narrow. For general palace recovery (HNSW corruption,
+chromadb segment quarantine, drawer loss from source-file deletion), use upstream's
+``mempalace repair --mode from-sqlite`` instead — added in 3.3.5 #1308. That mode
+reads (id, document, metadata) directly from chroma.sqlite3 and re-upserts into a
+fresh palace, which is a strict superset of what we used to do here.
+
+What this module owns:
+  - Loading ``exports/wing_user_backup.YYYYMMDD.json`` (written by wing_user_snapshot.py)
+  - Re-inserting user-wing drawers with deterministic IDs (idempotent)
+  - The empty-wing-user precondition check that gates restoration
+
+wing_user is a wrapper-unique concept (halls: questions / discoveries / frustrations /
+goals / decisions / observations) with no source repo to re-mine from — that's why
+this module exists separately from ``mempalace repair``.
 """
 
 import json
