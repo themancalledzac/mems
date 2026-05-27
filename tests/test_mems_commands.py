@@ -260,3 +260,34 @@ def test_hybrid_joins_jira_and_palace(monkeypatch, capsys):
     assert "Fix the bug" in out
     assert "src/thing.py" in out
     assert "matching palace drawer" in out
+
+
+# --- 7. palace_ops shell-out: `mems make` delegates to `mempalace init` ------
+
+
+def test_mems_make_shells_out_to_mempalace_init(monkeypatch, tmp_path):
+    """`mems make <dir>` should invoke `mempalace init --auto-mine <dir>` via subprocess."""
+    from tests.conftest import argparse_namespace_for
+
+    captured = []
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd, *args, **kwargs):
+        captured.append(cmd)
+        return FakeCompleted()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    from mems_cli.commands import palace_ops
+    palace_ops.cmd_make(argparse_namespace_for(dir=str(tmp_path), yes=True))
+
+    assert captured, "subprocess.run was not called"
+    cmd = captured[0]
+    assert "mempalace" in cmd[0] or cmd[0].endswith("mempalace")
+    assert "init" in cmd
+    assert "--auto-mine" in cmd
+    assert str(tmp_path) in cmd

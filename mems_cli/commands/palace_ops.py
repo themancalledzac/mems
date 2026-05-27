@@ -1,8 +1,14 @@
-"""`mems status|sync|resync|wings|rooms|logs|export` — MCP lifecycle ops."""
+"""`mems status|sync|resync|wings|rooms|logs|export|make|restore|doctor` — MCP lifecycle ops.
+
+`make`, `restore`, and `doctor` shell out to the upstream `mempalace` CLI so the
+wrapper doesn't duplicate init/repair/status logic. `restore --user-only` falls
+back to the wrapper's own user-wing recovery (no upstream equivalent).
+"""
 
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,6 +52,55 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     export_p.add_argument("wing")
     export_p.add_argument("--output", default=None, help="Output path (file).")
     export_p.set_defaults(func=cmd_export)
+
+    make_p = subparsers.add_parser(
+        "make",
+        help="Build/initialize a palace from a directory (delegates to `mempalace init`).",
+    )
+    make_p.add_argument("dir", help="Source directory to seed the palace from.")
+    make_p.add_argument("--yes", action="store_true", help="Skip confirmation prompts.")
+    make_p.set_defaults(func=cmd_make)
+
+    restore_p = subparsers.add_parser(
+        "restore",
+        help="Restore palace from backup (user_wing slice + delegate to `mempalace repair`).",
+    )
+    restore_p.add_argument(
+        "--palace-path",
+        dest="palace_path",
+        required=True,
+        help="Path to the palace directory.",
+    )
+    restore_p.add_argument(
+        "--user-only",
+        dest="user_only",
+        action="store_true",
+        help="Restore only the wing_user slice from the JSON backup (no general recovery).",
+    )
+    restore_p.add_argument(
+        "--source",
+        default=None,
+        help="Source sqlite path for general recovery (passed to `mempalace repair`).",
+    )
+    restore_p.add_argument(
+        "--archive-existing",
+        dest="archive_existing",
+        action="store_true",
+        help="Archive any existing palace before restoring.",
+    )
+    restore_p.set_defaults(func=cmd_restore)
+
+    doctor_p = subparsers.add_parser(
+        "doctor",
+        help="Diagnostic: pre-flight hook paths + delegate index health to `mempalace status`.",
+    )
+    doctor_p.add_argument(
+        "--palace-path",
+        dest="palace_path",
+        required=True,
+        help="Path to the palace directory.",
+    )
+    doctor_p.set_defaults(func=cmd_doctor)
 
 
 # --- helpers ------------------------------------------------------------------
@@ -178,3 +233,61 @@ def cmd_export(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
     return EXIT_OK
+
+
+# --- upstream-CLI shell-outs --------------------------------------------------
+
+
+def cmd_make(args: argparse.Namespace) -> dict:
+    """Build/initialize a palace from a directory. Delegates to `mempalace init --auto-mine`."""
+    cmd = ["mempalace", "init", "--auto-mine", str(args.dir)]
+    if getattr(args, "yes", False):
+        cmd.insert(2, "--yes")
+    result = subprocess.run(cmd, check=False)
+    return {"ok": result.returncode == 0, "returncode": result.returncode}
+
+
+def cmd_restore(args: argparse.Namespace) -> dict:
+    """Restore palace from backup.
+
+    Routes the user-wing slice to the wrapper's own restore (no upstream equivalent
+    — wing_user has no source repo to re-mine from). General palace recovery goes
+    to `mempalace repair --mode from-sqlite` (upstream 3.3.5 #1308).
+    """
+    if getattr(args, "user_only", False):
+        from src.restore_wing_user import restore_if_empty
+
+        palace = Path(args.palace_path)
+        exports = palace.parent / "exports"
+        return restore_if_empty(palace, exports)
+
+    # `--palace` is a global flag on the mempalace CLI, before the subcommand.
+    cmd = ["mempalace", "--palace", args.palace_path, "repair", "--mode", "from-sqlite"]
+    if getattr(args, "source", None):
+        cmd.extend(["--source", args.source])
+    if getattr(args, "archive_existing", False):
+        cmd.append("--archive-existing")
+    result = subprocess.run(cmd, check=False)
+    return {"ok": result.returncode == 0, "returncode": result.returncode}
+
+
+def cmd_doctor(args: argparse.Namespace) -> dict:
+    """Diagnostic: pre-flight hook paths + delegate index health to `mempalace status`."""
+    issues = []
+    save_hook = Path.home() / "Code" / "mempalace" / "hooks" / "mempal_save_hook.sh"
+    pc_hook = Path.home() / "Code" / "mempalace" / "hooks" / "mempal_precompact_hook.sh"
+    for f in (save_hook, pc_hook):
+        if not f.exists():
+            issues.append(f"missing hook: {f}")
+
+    # `--palace` is a global flag on the mempalace CLI, before the subcommand.
+    status = subprocess.run(
+        ["mempalace", "--palace", args.palace_path, "status"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if status.returncode != 0:
+        issues.append(f"mempalace status failed: {status.stderr.strip()}")
+
+    return {"ok": not issues, "issues": issues, "status_output": status.stdout}

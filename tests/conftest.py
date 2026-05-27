@@ -1,3 +1,4 @@
+import argparse
 import json
 import subprocess
 import tempfile
@@ -5,6 +6,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+
+def argparse_namespace_for(**kwargs):
+    """Build an argparse.Namespace from kwargs — handy for shell-out CLI tests."""
+    return argparse.Namespace(**kwargs)
 
 
 @pytest.fixture
