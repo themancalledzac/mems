@@ -25,7 +25,11 @@ backed vector store, so every AI session starts with the same memory.
 - **`mems` CLI** — single `pip install` surface for repo registry, palace
   ops, search, publishing, ticket lookup, and hybrid Jira + palace queries.
 
-See [`CONTEXT.md`](CONTEXT.md) for the full target-state spec.
+See [`CONTEXT.md`](docs/historical/CONTEXT.md) for the original target-state spec.
+
+## Tech Stack
+
+Python 3.12, `mempalace>=3.3.6`, FastMCP (via `mcp[cli]`), uvicorn+starlette, chromadb 1.5.4+, sentence-transformers, hatchling, ruff, pytest. Docker Compose for runtime.
 
 ## Quickstart
 
@@ -114,18 +118,16 @@ Artifacts live under `integration/` and the installers under `scripts/`:
 - **Codex** — `scripts/install_codex.sh` appends
   `integration/mempalace_codex_append.toml` to `~/.config/codex/config.toml`
   (guarded by a `[mcp_servers.mempalace]` marker so reruns skip).
-- **Claude Code** — wire the MCP server into `~/.claude/settings.json`:
-  ```json
-  {
-    "mcpServers": {
-      "mempalace": { "url": "http://localhost:8787/mcp" }
-    }
-  }
-  ```
-  The session-end stop hook lives at `integration/stop-hook.sh`.
+- **Claude Code** — `scripts/install_claude_code.sh` installs three hooks
+  (`PreToolUse: Agent`, `Stop`, `PreCompact`) idempotently into
+  `~/.claude/settings.json`. See the **Claude Code Setup** section below
+  for the full flow. Register the MCP server globally with
+  `claude mcp add --transport http mempalace --scope user http://localhost:8787/mcp`.
 
 Cursor-flavored session rules are also shipped as `.mdc` files under
-`integration/` (`mempalace-discovery.mdc`, `user-wing.mdc`).
+`integration/` (`mempalace-discovery.mdc`, `user-wing.mdc`). Claude Code
+does not read `.mdc` files; equivalent guidance for Claude Code lives in
+`~/.claude/CLAUDE.md`.
 
 ## Docker runtime
 
@@ -149,8 +151,12 @@ else is required on the host except Docker and Python for the CLI.
 | `PALACE_PATH` | `/data/palace` | Chroma persistence dir. |
 | `EXPORTS_PATH` | `/data/exports` | Wingpack + wing_user snapshots. |
 | `CONFIG_PATH` | `/config` | Mounted taxonomy + `repos.json`. |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Pre-downloaded at build time. |
+| `MEMPALACE_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Pre-downloaded at build time (upstream reads the `MEMPALACE_`-prefixed name). |
 | `WING_USER_RETENTION_DAYS` | `7` | Snapshot pruning threshold. |
+| `MEMPALACE_HOOKS_AUTO_SAVE` | `true` | Toggle upstream's auto-save hooks (upstream 3.3.6 #711). |
+| `MEMPALACE_EAGER_WARMUP` | `1` | Warm the embedder at startup for predictable cold-start latency (upstream 3.3.6 #1530). |
+| `MEMPALACE_TOPIC_TUNNEL_MIN_COUNT` | `2` | Co-occurrence threshold for promoting topic tunnels (default upstream is `1`; wrapper tunes to `2` for dense corpora). |
+| `MEMPALACE_ENTITY_LANGUAGES` | `en` | Comma-list of entity-extraction languages. Override via compose env file. |
 
 **Common operations:**
 
@@ -177,6 +183,38 @@ You can test it end-to-end: `docker compose down -v && docker compose up -d`
 — the wing_user drawers should reappear on boot from the newest snapshot.
 Snapshots live inside the named volume, so they survive container
 rebuilds; they are wiped only by `docker compose down -v`.
+
+## Claude Code Setup
+
+The wrapper installs three Claude Code hooks via `scripts/install_claude_code.sh`:
+
+| Hook | Purpose |
+|---|---|
+| `PreToolUse: Agent` | Inject mempalace orientation before sub-agent calls |
+| `Stop` | Auto-mine the active transcript every 15 user messages |
+| `PreCompact` | Emergency save before context compaction |
+
+The `Stop` and `PreCompact` scripts live in `~/Code/mempalace/hooks/` — install
+upstream mempalace there alongside this repo:
+
+```bash
+git clone https://github.com/MemPalace/mempalace.git ~/Code/mempalace
+```
+
+Then run the installer (idempotent):
+
+```bash
+bash scripts/install_claude_code.sh
+```
+
+**Important:** Claude Code retains JSONL transcripts for only **30 days**.
+Without these hooks wired, conversation history is lost permanently after
+auto-deletion. Back up `~/.claude/projects/` and run the one-shot backfill:
+
+```bash
+rsync -av ~/.claude/projects/ ~/Documents/Claude_JSONL_Backup/
+bash scripts/backfill_claude_sessions.sh
+```
 
 ## Configuration
 
