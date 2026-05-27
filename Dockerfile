@@ -18,7 +18,8 @@ ENV PALACE_PATH=/data/palace \
     MEMPALACE_EMBEDDING_MODEL=all-MiniLM-L6-v2 \
     WING_USER_RETENTION_DAYS=7 \
     MEMPALACE_HOOKS_AUTO_SAVE=true \
-    MEMPALACE_EAGER_WARMUP=1
+    MEMPALACE_EAGER_WARMUP=1 \
+    MEMPALACE_TOPIC_TUNNEL_MIN_COUNT=2
 
 # Install project + deps. Copy pyproject + sources needed for the build backend.
 COPY pyproject.toml README.md ./

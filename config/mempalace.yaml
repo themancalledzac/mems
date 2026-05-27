@@ -1,5 +1,14 @@
 # Memory Palace taxonomy.
 #
+# Runtime knobs (env vars consumed by upstream mempalace):
+#   MEMPALACE_PALACE_PATH       — palace directory (set by entrypoint.sh)
+#   MEMPALACE_EMBEDDING_MODEL   — minilm | embeddinggemma (default: minilm)
+#   MEMPALACE_HOOKS_AUTO_SAVE   — true | false (default: true)
+#   MEMPALACE_EAGER_WARMUP      — 1 = warm the embedder at startup (default: off)
+#   MEMPALACE_TOPIC_TUNNEL_MIN_COUNT — co-occurrence threshold for topic tunnels (default: 1, wrapper sets 2)
+#   MEMPALACE_ENTITY_LANGUAGES  — comma list, e.g. "en,pt-br" (default: en)
+#   MEMPALACE_MAX_CHUNKS_PER_FILE — safety cap (default: upstream's tuned value)
+#
 # Shape: wings[<wing>].halls[<hall>].rooms is a list of {name, description, keywords}.
 #   - Halls are broad feature areas ("landing-page", "media-pipeline").
 #   - Rooms are sub-topics within a hall.
