@@ -381,19 +381,26 @@ def create_server(
         agent_name: str,
         entry: str,
         topic: str = "general",
+        wing: str = "",
     ) -> dict:
-        """Append a diary entry for an agent."""
+        """Append a diary entry for an agent. Optionally scope to a specific wing."""
         return handle_diary_write(
             palace_path,
             agent_name=agent_name,
             entry=entry,
             topic=topic,
+            wing=wing,
         )
 
     @mcp.tool()
-    def mempalace_diary_read(agent_name: str, last_n: int = 10) -> dict:
-        """Read an agent's recent diary entries."""
-        return handle_diary_read(palace_path, agent_name=agent_name, last_n=last_n)
+    def mempalace_diary_read(agent_name: str, last_n: int = 10, wing: str = "") -> dict:
+        """Read an agent's recent diary entries. Empty wing returns entries from every wing."""
+        return handle_diary_read(
+            palace_path,
+            agent_name=agent_name,
+            last_n=last_n,
+            wing=wing,
+        )
 
     # TODO: mempalace_diary_read_time — no upstream tool takes a time window
     # for diary reads (only last_n); skipped. See Phase 4B report.

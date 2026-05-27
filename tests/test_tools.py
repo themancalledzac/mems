@@ -74,3 +74,46 @@ class TestHandleSyncStatus:
         )
         assert "test-wing" in result["wings"]
         assert result["wings"]["test-wing"]["status"] == "synced"
+
+
+def test_handle_diary_write_forwards_wing(monkeypatch, tmp_path):
+    from src import tools
+    captured = {}
+
+    def fake_tool_diary_write(agent_name, entry, topic, wing):
+        captured["wing"] = wing
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        "mempalace.mcp_server.tool_diary_write",
+        fake_tool_diary_write,
+    )
+    tools.handle_diary_write(
+        palace_path=str(tmp_path),
+        agent_name="claude",
+        entry="test entry",
+        topic="general",
+        wing="wing_test",
+    )
+    assert captured["wing"] == "wing_test"
+
+
+def test_handle_diary_read_forwards_wing(monkeypatch, tmp_path):
+    from src import tools
+    captured = {}
+
+    def fake_tool_diary_read(agent_name, last_n, wing):
+        captured["wing"] = wing
+        return {"entries": []}
+
+    monkeypatch.setattr(
+        "mempalace.mcp_server.tool_diary_read",
+        fake_tool_diary_read,
+    )
+    tools.handle_diary_read(
+        palace_path=str(tmp_path),
+        agent_name="claude",
+        last_n=10,
+        wing="wing_test",
+    )
+    assert captured["wing"] == "wing_test"

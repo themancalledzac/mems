@@ -601,17 +601,23 @@ def handle_diary_write(
     agent_name: str,
     entry: str,
     topic: str = "general",
+    wing: str = "",
 ) -> dict:
-    """Append a diary entry for an agent."""
+    """Append a diary entry for an agent. Optionally scope to a specific wing."""
     from mempalace.mcp_server import tool_diary_write
 
     _bind_palace(palace_path)
-    return tool_diary_write(agent_name=agent_name, entry=entry, topic=topic)
+    return tool_diary_write(agent_name=agent_name, entry=entry, topic=topic, wing=wing)
 
 
-def handle_diary_read(palace_path: str, agent_name: str, last_n: int = 10) -> dict:
-    """Read recent diary entries for an agent."""
+def handle_diary_read(
+    palace_path: str,
+    agent_name: str,
+    last_n: int = 10,
+    wing: str = "",
+) -> dict:
+    """Read an agent's recent diary entries. Empty wing returns entries from every wing."""
     from mempalace.mcp_server import tool_diary_read
 
     _bind_palace(palace_path)
-    return tool_diary_read(agent_name=agent_name, last_n=last_n)
+    return tool_diary_read(agent_name=agent_name, last_n=last_n, wing=wing)
