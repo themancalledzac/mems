@@ -32,13 +32,6 @@
 #   the env on every access, so chroma-backed tools (drawers, tunnels, search,
 #   diary) respect the current target.
 #
-#   CAVEAT — `_kg` is a module-level KnowledgeGraph singleton bound at
-#   mempalace.mcp_server import time. KG tools (kg_query, kg_add, kg_time,
-#   kg_stats) will always read/write the KG sqlite that was resolved on first
-#   import. In a single-palace container (our runtime target), this is fine.
-#   In tests with tmp_path, these tools will hit whatever KG DB the first
-#   import resolved — so registration is asserted, behavior isn't.
-#
 #   kg_query        -> wraps tool_kg_query (entity, as_of, direction)
 #   kg_add          -> wraps tool_kg_add   (subject, predicate, object_, ...)
 #   kg_time         -> wraps tool_kg_timeline (entity)
@@ -404,13 +397,11 @@ def handle_export_wing(
 
 
 def _bind_palace(palace_path: str) -> None:
-    """Point mempalace.mcp_server's env-bound config at ``palace_path``.
+    """Set MEMPALACE_PALACE_PATH so subsequent mempalace tool calls hit the right palace.
 
-    The upstream module's ``_config.palace_path`` is a property that reads
-    MEMPALACE_PALACE_PATH on each access, so setting this env var is enough
-    for chroma-backed tools. The KG singleton (``_kg``) is bound at import
-    time and is NOT retargeted — that's a runtime-only limitation documented
-    at the top of this file.
+    Both chroma collections and the knowledge graph are resolved per-call from
+    the env var (upstream 3.3.5 #1136 + #1383), so this is sufficient for
+    multi-tenant hosts that rotate palaces between tool invocations.
     """
     os.environ["MEMPALACE_PALACE_PATH"] = palace_path
 
@@ -424,10 +415,7 @@ def handle_kg_query(
     as_of: str | None = None,
     direction: str = "both",
 ) -> dict:
-    """Query KG for relationships involving an entity.
-
-    Runtime-only: KG is bound to the palace path at module import.
-    """
+    """Query KG for relationships involving an entity."""
     from mempalace.mcp_server import tool_kg_query
 
     _bind_palace(palace_path)
