@@ -506,9 +506,6 @@ wings:
           - name: diff-engine
             description: Multi-repo git-diff tracking and ledger state management.
             keywords: [sync_engine, SyncEngine, SyncLedger, changed_files]
-          - name: room-detection
-            description: Priority-layered room assignment via path, keyword, explicit blocks.
-            keywords: [filters, detect_room_for_wing, path_prefix_match, keyword_score]
 
       wingpack-pipeline:
         rooms:
