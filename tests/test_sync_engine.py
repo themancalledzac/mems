@@ -230,7 +230,7 @@ class TestSyncEngine:
             patch(
                 "src.sync_engine.scan_project", return_value=[mock_repo / "hello.py"]
             ) as mock_scan,
-            patch("src.sync_engine.process_file") as mock_process,
+            patch("src.sync_engine.process_file"),
         ):
             engine.full_sync(wing_name="test-wing")
 
@@ -277,7 +277,8 @@ def test_full_sync_calls_mempalace_sync_after_ingest(
     # (cmd[0] == "mempalace" and "sync" appears as a separate argv token) so
     # tmp_path strings that contain "mempalace"/"sync" don't false-positive.
     sync_calls = [
-        c for c in calls
+        c
+        for c in calls
         if isinstance(c, list) and len(c) >= 2 and c[0] == "mempalace" and "sync" in c
     ]
     assert sync_calls, f"expected `mempalace sync` post-ingest call; got {calls}"

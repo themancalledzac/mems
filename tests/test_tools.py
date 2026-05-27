@@ -78,6 +78,7 @@ class TestHandleSyncStatus:
 
 def test_handle_diary_write_forwards_wing(monkeypatch, tmp_path):
     from src import tools
+
     captured = {}
 
     def fake_tool_diary_write(agent_name, entry, topic, wing):
@@ -100,6 +101,7 @@ def test_handle_diary_write_forwards_wing(monkeypatch, tmp_path):
 
 def test_handle_diary_read_forwards_wing(monkeypatch, tmp_path):
     from src import tools
+
     captured = {}
 
     def fake_tool_diary_read(agent_name, last_n, wing):

@@ -57,9 +57,7 @@ CODE_TASK_KEYWORDS = {
 
 # Path-like token: at least one slash-separated segment, ending with a known
 # code/config extension. Matches "src/foo.py", "app/components/Bar.tsx", etc.
-PATH_LIKE_RE = re.compile(
-    r"\b(?:\w+/)+\w+\.(?:ts|tsx|js|jsx|py|java|go|rs|md|yaml|yml|json|sh)\b"
-)
+PATH_LIKE_RE = re.compile(r"\b(?:\w+/)+\w+\.(?:ts|tsx|js|jsx|py|java|go|rs|md|yaml|yml|json|sh)\b")
 
 # Marker string that indicates the orientation block IS present.
 #

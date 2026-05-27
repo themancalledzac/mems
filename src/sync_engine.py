@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-
 from mempalace.miner import process_file, scan_project
 from mempalace.palace import get_collection
 
@@ -107,11 +106,7 @@ class SyncEngine:
         Uses scan_project + process_file instead of mine() because repos
         are mounted read-only and mine() expects a mempalace.yaml in each repo.
         """
-        targets = (
-            {wing_name: self.repos[wing_name]}
-            if wing_name
-            else self.repos
-        )
+        targets = {wing_name: self.repos[wing_name]} if wing_name else self.repos
 
         for name, repo_config in targets.items():
             repo_path = repo_config["path"]
@@ -133,13 +128,16 @@ class SyncEngine:
                     )
 
                 head_sha = get_head_sha(repo_path)
-                self.ledger.update(name, {
-                    "repo_path": repo_path,
-                    "last_commit_sha": head_sha,
-                    "last_sync_ts": datetime.now(timezone.utc).isoformat(),
-                    "files_indexed": len(files),
-                    "status": "synced",
-                })
+                self.ledger.update(
+                    name,
+                    {
+                        "repo_path": repo_path,
+                        "last_commit_sha": head_sha,
+                        "last_sync_ts": datetime.now(timezone.utc).isoformat(),
+                        "files_indexed": len(files),
+                        "status": "synced",
+                    },
+                )
             except Exception as e:
                 self.ledger.mark_error(name, repo_path, str(e))
 
@@ -148,11 +146,7 @@ class SyncEngine:
 
     def incremental_sync(self, wing_name: str | None = None):
         """Sync only files changed since last sync."""
-        targets = (
-            {wing_name: self.repos[wing_name]}
-            if wing_name
-            else self.repos
-        )
+        targets = {wing_name: self.repos[wing_name]} if wing_name else self.repos
 
         for name, repo_config in targets.items():
             entry = self.ledger.get(name)
@@ -188,15 +182,19 @@ class SyncEngine:
                             dry_run=False,
                         )
 
-                file_count = len(changes["added"]) + len(changes["modified"])
                 prev_count = entry.get("files_indexed", 0)
-                self.ledger.update(name, {
-                    "repo_path": repo_path,
-                    "last_commit_sha": head_sha,
-                    "last_sync_ts": datetime.now(timezone.utc).isoformat(),
-                    "files_indexed": prev_count + len(changes["added"]) - len(changes["deleted"]),
-                    "status": "synced",
-                })
+                self.ledger.update(
+                    name,
+                    {
+                        "repo_path": repo_path,
+                        "last_commit_sha": head_sha,
+                        "last_sync_ts": datetime.now(timezone.utc).isoformat(),
+                        "files_indexed": prev_count
+                        + len(changes["added"])
+                        - len(changes["deleted"]),
+                        "status": "synced",
+                    },
+                )
             except Exception as e:
                 self.ledger.mark_error(name, repo_path, str(e))
 

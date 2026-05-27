@@ -283,6 +283,7 @@ def test_mems_make_shells_out_to_mempalace_init(monkeypatch, tmp_path):
     monkeypatch.setattr("subprocess.run", fake_run)
 
     from mems_cli.commands import palace_ops
+
     palace_ops.cmd_make(argparse_namespace_for(dir=str(tmp_path), yes=True))
 
     assert captured, "subprocess.run was not called"

@@ -100,9 +100,7 @@ def test_case_5_feature_dev_code_explorer_passes():
 
 def test_case_6_explicit_opt_out_passes():
     """The escape-hatch token short-circuits the block."""
-    out, _ = _run_hook(
-        _agent_payload("find ContactForm.tsx\n# skip-mempalace-orientation")
-    )
+    out, _ = _run_hook(_agent_payload("find ContactForm.tsx\n# skip-mempalace-orientation"))
     assert not _is_blocked(out)
 
 
@@ -208,7 +206,5 @@ def test_block_reason_mentions_snippet_path():
 )
 def test_other_subagent_types_pass(subagent_type: str):
     """Any subagent type outside the gated set passes regardless of prompt."""
-    out, _ = _run_hook(
-        _agent_payload("fix the bug in src/foo.py", subagent_type=subagent_type)
-    )
+    out, _ = _run_hook(_agent_payload("fix the bug in src/foo.py", subagent_type=subagent_type))
     assert not _is_blocked(out)
