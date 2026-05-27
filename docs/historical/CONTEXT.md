@@ -1,6 +1,22 @@
 # mems — Full Repo Context (All-In-One)
 
-> Target-state foundational context. This describes the intended architecture for the `mems` repo — a wrapper around the open-source [mempalace](https://pypi.org/project/mempalace/) package that adds multi-repo orchestration, portable wingpacks, disaster recovery, a unified CLI, and IDE integrations. Use this doc to diff against current repo state and drive the roadmap.
+> ⚠️ **Status: DRIFTED target-state spec.** Most of this document was written
+> *before* implementation and has not been kept in sync. Significant portions
+> are aspirational, vaporware, or wrong (taxonomy claims, CLI command names,
+> wings list, line-32 Python version, multiple gibberish paragraphs in §9).
+>
+> **For current state, use these instead:**
+>
+> - **What's shipped + how to use it:** [`README.md`](README.md)
+> - **Taxonomy (the source of truth):** [`config/mempalace.yaml`](config/mempalace.yaml) — the YAML is canonical; if a description here disagrees, the YAML wins.
+> - **What works vs what's pending:** [`docs/2026-05-06-handoff.md`](docs/2026-05-06-handoff.md)
+> - **Live wing list + drawer counts:** call `mempalace_status` (the `## 11. Current Wings` section below is wrong — those wings are not registered).
+>
+> This file is scheduled to be merged into `ARCHITECTURE.md` or deleted entirely
+> in a follow-up cleanup. **Do not treat anything below as canonical.** Inline
+> `(planned — not implemented)` markers have been added to the most actively
+> misleading command references; the rest of the body is left untouched
+> pending the merge/delete decision.
 
 ---
 
@@ -60,7 +76,7 @@ python3 scripts/setup.sh
 7. **Cursor install** (if selected): write pipeline to `~/.cursor/mcp.json`, merge with markers
 8. **Codex install** (if selected): write pipeline to `~/.codex/config.toml`, copy `mempalace_codex.toml` block
 9. `docker compose up --build` then `docker compose up --wait`
-10. **Final check:** `mems doctor` (mempalace check, validates compose/health)
+10. **Final check:** `mems doctor` *(planned — not implemented)* (mempalace check, validates compose/health)
 
 ### CLI fallback install
 
@@ -75,8 +91,8 @@ python3 -m mems_cli --help    # same surface, no GUI fiddling
 | ------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------- |
 | `docker compose up --build`                             | Incremental sync (git diff + hash scan)                | Kept                                           |
 | `MEMPALACE_FULL_REFRESH=true docker compose up --build` | Re-embed all source-owned wings; `wing_user` preserved | `wing_user` kept                               |
-| `mems make`                                             | Snapshot `wing_user` + `down -v` + `up --build`        | Palace volume wiped; `wing_user` auto-restores |
-| `mems doctor`                                           | Same as `mems make` + freshness guard on snapshot      | Serves as nuke-but-safe                        |
+| `mems make` *(planned — not implemented)*                                             | Snapshot `wing_user` + `down -v` + `up --build`        | Palace volume wiped; `wing_user` auto-restores |
+| `mems doctor` *(planned — not implemented)*                                           | Same as `mems make` *(planned — not implemented)* + freshness guard on snapshot      | Serves as nuke-but-safe                        |
 | `docker compose down -v && docker compose up -d`        | Raw nuke (entrypoint auto-restore saves `wing_user`)   | Freshness guard kicks in                       |
 | `docker compose up --wait -d`                           | Rebuild image only                                     | —                                              |
 
@@ -240,7 +256,7 @@ Contents:
 
 1. `wing_user_snapshot.py` runs on every boot — split-brain read of `chroma.sqlite3` → writes `exports/wing_user_backup.YYYYMMDD.json` (one per day), prunes older than retention (default 7d)
 2. `restore_wing_user.py` runs right after — if `wing_user` is empty, re-inserts from newest backup using the canonical open-palace API with deterministic IDs
-3. `mems doctor` forces a fresh snapshot BEFORE `down -v` if newest backup is >6h old (override with `--force`), then rebuilds and polls `/health`
+3. `mems doctor` *(planned — not implemented)* forces a fresh snapshot BEFORE `down -v` if newest backup is >6h old (override with `--force`), then rebuilds and polls `/health`
 
 If `mems my rooms` comes back empty after a rebuild:
 
@@ -279,7 +295,7 @@ All commands default to `MEMPALACE_URL=http://localhost:8787`. Run from anywhere
 | `mems sync [--full]` | One-shot `/sync` call. Exits non-zero if `/status` is not ok           |
 | `mems restart`       | `docker compose restart mempalace`                                     |
 | `mems make [--full]` | Snapshot + `down -v` + `up --build` + poll `/health`                   |
-| `mems doctor`        | Same as `make` + aborts if newest backup is >6h old (unless `--force`) |
+| `mems doctor` *(planned — not implemented)*        | Same as `make` + aborts if newest backup is >6h old (unless `--force`) |
 
 ### Palace Search (wing_user)
 
@@ -359,7 +375,7 @@ HTTP endpoints also include `/health` (JSON status, `fix_blob_ids`, `full_refres
 
 ### Docker CLI gotchas
 
-- `docker compose ps --filter` is NOT supported (docker-py limitation). Use `docker compose ps | awk/grep` — `mems doctor` does this
+- `docker compose ps --filter` is NOT supported (docker-py limitation). Use `docker compose ps | awk/grep` — `mems doctor` *(planned — not implemented)* does this
 - On `2.38+` releases UID-mismatched bind-mounts with "dubious ownership" throw. `safe.directory=*` in git config handles it — don't patch `.gitconfig`
 - Repo-mounts must be **r/o** for `auto_publish` (safety; ensures we never write back into source repos by accident)
 - Inter-repo KG triples — auto-extraction is shallow; use cross-repo relations manually
@@ -369,17 +385,11 @@ HTTP endpoints also include `/health` (JSON status, `fix_blob_ids`, `full_refres
 
 ## 11. Current Wings (from `mempalace.yaml`)
 
-| Wing                | Source                      |
-| ------------------- | --------------------------- |
-| `wing_user`         | none (MCP-only)             |
-| `databricks-ett`    | `../databricks-ett`         |
-| `database-composer` | `../database-composer`      |
-| `database-dataflow` | `../database-dataflow`      |
-| `talos_v2`          | `../talos_v2`               |
-| `mcp-static-infra`  | `../infra/mcp-static-infra` |
-| `mcp-cdk-infra`     | `../infra/mcp-cdk-dp-infra` |
-
-Typical steady state: 4+ wings, 5k–8k drawers, cross-repo tunnels for shared domains (GA4, GAM, Auth0, Magnite, Salesforce, Helios, OpenWeb, Bankrate, Cross Walk, etc.).
+> ⚠️ **The list previously here was wrong** — those wing names came from a
+> different project's spec. For the actual registered wings, run
+> `mempalace_status` or check `config/repos.json`. As of 2026-05-06 they are:
+> `wing_user`, `edens-zac`, `edens-zac-backend`, `edens-zac-backend-go`,
+> `edens-zac-ml`, `lightroom-export`, `job-search`, `running`, `memory`.
 
 ---
 
