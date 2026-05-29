@@ -68,14 +68,27 @@ def register_subcommands(subparsers: argparse._SubParsersAction) -> None:
     # Phase 7 command modules.
     from mems_cli.commands import (
         hybrid,
+        my,
         palace_ops,
         publishing,
         repo_registry,
         search,
+        standup,
         tickets,
+        todo,
     )
 
-    for module in (repo_registry, palace_ops, search, publishing, tickets, hybrid):
+    for module in (
+        repo_registry,
+        palace_ops,
+        search,
+        my,
+        publishing,
+        tickets,
+        todo,
+        standup,
+        hybrid,
+    ):
         module.register(subparsers)
 
 
