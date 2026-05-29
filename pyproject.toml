@@ -9,7 +9,10 @@ description = "Memory Palace multi-repo orchestrator — wraps mempalace with wi
 requires-python = ">=3.12,<3.15"
 readme = "README.md"
 dependencies = [
-    "mempalace>=3.3.5",  # TODO: bump to >=3.3.6 once #1540 (silent-truncation fix) lands on PyPI
+    # TEMP: 3.3.6 is not yet on PyPI — pin to the git tag so we capture #1540
+    # (the silent long-drawer truncation fix). Revert to "mempalace>=3.3.6" once
+    # it publishes. v3.3.6 == commit db1fbe8. Needs allow-direct-references below.
+    "mempalace @ git+https://github.com/MemPalace/mempalace@v3.3.6",
     "mcp[cli]>=1.0.0",
     "uvicorn>=0.30.0",
     "starlette>=0.38.0",
@@ -31,6 +34,11 @@ mems = "mems_cli.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src", "mems_cli"]
+
+[tool.hatch.metadata]
+# Required so the git-ref pin on mempalace (a PEP 508 direct reference) is
+# accepted at build time. Remove once mempalace reverts to a plain PyPI pin.
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

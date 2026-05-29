@@ -1,4 +1,7 @@
-mempalace>=3.3.5  # TODO: bump to >=3.3.6 once #1540 (silent-truncation fix) lands on PyPI
+# TEMP: 3.3.6 is not yet on PyPI — pin to the git tag so we capture #1540 (the
+# silent long-drawer truncation fix). Revert to "mempalace>=3.3.6" once it
+# publishes. v3.3.6 == commit db1fbe8.
+mempalace @ git+https://github.com/MemPalace/mempalace@v3.3.6
 mcp[cli]>=1.0.0
 uvicorn>=0.30.0
 starlette>=0.38.0
