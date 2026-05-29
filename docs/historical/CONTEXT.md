@@ -103,6 +103,30 @@ python3 -m mems_cli --help    # same surface, no GUI fiddling
 docker compose up --build
 ```
 
+**Post-upgrade smoke (when the storage/index engine changed).** A version bump
+can ship stricter HNSW vector-index integrity checks that the *existing* index
+(written by the old version) fails on first boot — mempalace then quarantines
+the segment (`<uuid>.corrupt-<ts>` / `.drift-<ts>` under the palace dir). The
+tell is that wing-filtered `mempalace_search` throws
+`Error executing plan: Internal error: Error finding id` while `search_all`,
+`wing_user` search, writes, and `/health` all keep working and report every
+drawer present. Fix by rebuilding the HNSW index from the intact
+`chroma.sqlite3`:
+
+```bash
+docker compose stop mempalace                      # repair wants the server down
+docker run --rm -v memory_mempalace-data:/data memory-mempalace:latest \
+    mempalace --palace /data/palace repair --yes   # legacy mode; rebuilds index from sqlite
+docker compose up -d --wait mempalace
+# verify: run a REAL wing-filtered search (e.g. mempalace_search wing=memory)
+```
+
+The source data (`chroma.sqlite3`) is never at risk here — only the derived
+vector index is rebuilt. Always finish an engine-touching upgrade with a smoke
+that runs an actual wing-filtered search against the *existing* index; a
+fresh-empty-volume boot does **not** exercise this code path, so a clean smoke
+can pass while prod is broken.
+
 ---
 
 ## 4. File Layout

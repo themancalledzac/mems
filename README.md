@@ -239,9 +239,10 @@ bash scripts/backfill_claude_sessions.sh
 
 ## Troubleshooting
 
-See [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for the common
-failure modes (container won't start, search returns no results, wingpack
-publish refused, IDE doesn't see tools, etc.).
+See [`docs/historical/TROUBLESHOOTING.md`](docs/historical/TROUBLESHOOTING.md) for the common
+failure modes (container won't start, search returns no results,
+wing-filtered search failing with "Error finding id" after a version bump,
+wingpack publish refused, IDE doesn't see tools, etc.).
 
 ## Development
 

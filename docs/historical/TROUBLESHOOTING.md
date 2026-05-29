@@ -104,6 +104,40 @@ docker compose logs mempalace | grep -iE "sync|error"
 
 ---
 
+## Wing-filtered search fails with "Error finding id" (but `search_all` works)
+
+**Symptoms:** `mems search "<query>" --wing <wing>` (and MCP
+`mempalace_search` with a wing filter) errors with
+`Error executing plan: Internal error: Error finding id`, while
+`mempalace_search_all`, `wing_user` search, writes, and `/health` all
+succeed and report every drawer present. Typically appears right after a
+mempalace version bump that tightened HNSW vector-index integrity checks:
+the existing index (written by the old version) fails the new check on
+first boot and the segment gets quarantined.
+
+**Diagnose:**
+
+```bash
+docker exec mempalace mempalace --palace /data/palace repair-status   # read-only: sqlite vs HNSW counts
+docker exec mempalace sh -c 'ls -d /data/palace/*.corrupt-* /data/palace/*.drift-* 2>/dev/null'   # quarantined segments?
+```
+
+**Fix:**
+
+```bash
+docker compose stop mempalace                       # repair needs the server down
+docker run --rm -v memory_mempalace-data:/data memory-mempalace:latest \
+    mempalace --palace /data/palace repair --yes    # legacy mode; rebuilds HNSW from chroma.sqlite3
+docker compose up -d --wait mempalace
+```
+
+`mems restore` delegates to the same repair path if you prefer the CLI.
+The source data in `chroma.sqlite3` is intact — only the derived vector
+index is rebuilt — so no drawers are lost. Verify by re-running an actual
+wing-filtered search and confirming results come back.
+
+---
+
 ## Wing sync fails repeatedly
 
 **Symptoms:** `mems status` shows a wing with `status: error`, or
