@@ -1,0 +1,26 @@
+# Build-context hygiene. The Dockerfile COPYs only pyproject.toml, README.md,
+# src/, mems_cli/, config/, and entrypoint.sh — everything below is unneeded
+# context that would otherwise be shipped to the daemon on every build.
+.venv/
+.git/
+.gitignore
+.dockerignore
+.claude/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+# Repo material not needed in the runtime image.
+tests/
+docs/
+scripts/
+exports/
+palace/
+.todo/
+*.wingpack
+# Local/editor cruft.
+.DS_Store
+.env
+*.log
