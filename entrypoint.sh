@@ -14,6 +14,20 @@ WING_USER_RETENTION_DAYS="${WING_USER_RETENTION_DAYS:-7}"
 export PALACE_PATH EXPORTS_PATH CONFIG_PATH MEMORY_PORT WING_USER_RETENTION_DAYS
 # Keep MEMPALACE_EXPORTS_DIR aligned with EXPORTS_PATH for modules that read it.
 export MEMPALACE_EXPORTS_DIR="${MEMPALACE_EXPORTS_DIR:-$EXPORTS_PATH}"
+# Upstream mempalace (CLI + library) reads MEMPALACE_PALACE_PATH, while the
+# wrapper's own modules read PALACE_PATH — keep them aligned so a CLI invocation
+# (see the dispatch below) and the server hit the same palace. config/mempalace.yaml
+# already documents this var as "set by entrypoint.sh".
+export MEMPALACE_PALACE_PATH="${MEMPALACE_PALACE_PATH:-$PALACE_PATH}"
+
+# CLI passthrough: `docker run <image> mempalace mine ...` (or any command) runs
+# that command directly — with the env above already exported — instead of the
+# server-boot flow below. No args → boot the MCP server. This is what lets the
+# image double as the `mempalace` CLI without an `--entrypoint` override (the
+# arg-swallowing trap that broke the 2026-05 backfill).
+if [ "$#" -gt 0 ]; then
+    exec "$@"
+fi
 
 echo "=================================================="
 echo "Memory Palace starting..."

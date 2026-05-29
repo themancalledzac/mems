@@ -3,9 +3,11 @@
 # wing_claude_imports. Idempotent — mempalace's drawer IDs are deterministic,
 # so re-runs are no-ops.
 #
-# Runs `mempalace mine` inside the wrapper's docker image. We override the
-# ENTRYPOINT because entrypoint.sh unconditionally launches the MCP server
-# and ignores positional args.
+# Runs `mempalace mine` inside the wrapper's docker image. entrypoint.sh
+# dispatches positional args straight to that command (no args → MCP server)
+# and exports MEMPALACE_PALACE_PATH=/data/palace, so the CLI hits the mounted
+# volume with no `--entrypoint` override needed. On an older image whose
+# entrypoint still swallows args, add `--entrypoint mempalace` before "$IMAGE".
 #
 # Usage:
 #   bash scripts/backfill_claude_sessions.sh                              # default source: ~/.claude/projects
@@ -35,9 +37,7 @@ echo "  image:  $IMAGE"
 echo
 
 docker run --rm \
-    --entrypoint mempalace \
     -v "$PALACE_VOLUME:/data" \
     -v "$SOURCE:/claude_projects:ro" \
-    -e MEMPALACE_PALACE_PATH=/data/palace \
     "$IMAGE" \
-    mine /claude_projects --mode convos --wing claude_imports
+    mempalace mine /claude_projects --mode convos --wing claude_imports
