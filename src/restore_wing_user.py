@@ -21,8 +21,6 @@ from pathlib import Path
 
 from mempalace.palace import get_collection
 
-from src.wing_user_snapshot import _read_all_wing_user
-
 
 def _newest_backup(exports_dir: Path) -> Path | None:
     exports_dir = Path(exports_dir)
@@ -36,13 +34,19 @@ def _newest_backup(exports_dir: Path) -> Path | None:
     return backups[0] if backups else None
 
 
-def _wing_user_is_empty(palace_path: Path) -> bool:
-    """True if wing_user has no drawers. Mirrors the snapshot reader."""
-    try:
-        drawers = _read_all_wing_user(palace_path)
-    except Exception:
-        return True  # palace not initialized yet
-    return len(drawers) == 0
+def _wing_user_count(palace_path: Path) -> int:
+    """Number of drawers currently in wing_user.
+
+    Unlike the snapshot reader, this deliberately does NOT swallow read errors.
+    The restore guard must distinguish a genuinely empty wing (count 0) from a
+    transient read failure (exception) so it can fail CLOSED on the latter —
+    treating an unreadable wing as "empty" would replay a backup over live data.
+    ``create=True`` means a fresh palace yields an empty collection (count 0)
+    rather than an error, so real cold-boot restores still fire.
+    """
+    collection = get_collection(str(palace_path), collection_name="mempalace_drawers", create=True)
+    raw = collection.get(where={"wing": "user"})
+    return len(raw.get("ids") or [])
 
 
 def _reinsert_drawers(palace_path: Path, drawers: list[dict]) -> None:
@@ -56,8 +60,21 @@ def _reinsert_drawers(palace_path: Path, drawers: list[dict]) -> None:
 
 
 def restore_if_empty(palace_path: Path, exports_dir: Path) -> dict:
-    """Re-insert wing_user drawers from newest backup if wing_user is empty."""
-    if not _wing_user_is_empty(palace_path):
+    """Re-insert wing_user drawers from newest backup if wing_user is empty.
+
+    Fails CLOSED: if wing_user's state cannot be read, restore is skipped rather
+    than assuming the wing is empty — a transient read error must never trigger
+    a replay over a live, non-empty wing_user.
+    """
+    try:
+        count = _wing_user_count(palace_path)
+    except Exception as exc:  # noqa: BLE001 — any read failure → skip (fail-closed)
+        return {
+            "action": "skipped",
+            "reason": f"wing_user state unreadable; skipping restore (fail-closed): {exc}",
+        }
+
+    if count > 0:
         return {"action": "skipped", "reason": "wing_user not empty"}
 
     backup = _newest_backup(exports_dir)

@@ -53,3 +53,26 @@ def test_prune_keeps_recent(tmp_path):
     remaining = sorted(exp.glob("wing_user_backup_*.json"))
     # retention_days=3 should keep today, today-1, today-2 -> 3 files
     assert len(remaining) == 3
+
+
+def test_snapshot_cycle_runs_and_returns_path(tmp_palace_with_wing_user, tmp_path):
+    """The daily-timer cycle writes a backup and returns its path on success."""
+    from src.mcp_http_server import _snapshot_cycle
+
+    exp = tmp_path / "exports"
+    out = _snapshot_cycle(str(tmp_palace_with_wing_user), str(exp), retention_days=7)
+    assert out is not None
+    assert out.exists()
+
+
+def test_snapshot_cycle_is_failure_safe(tmp_palace_with_wing_user, tmp_path, monkeypatch):
+    """A snapshot failure must return None, never raise — the timer thread relies on it."""
+    import src.wing_user_snapshot as snap
+    from src.mcp_http_server import _snapshot_cycle
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(snap, "snapshot_wing_user", _boom)
+    result = _snapshot_cycle(str(tmp_palace_with_wing_user), str(tmp_path / "exports"), 7)
+    assert result is None

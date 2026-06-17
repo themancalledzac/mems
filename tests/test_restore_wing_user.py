@@ -61,6 +61,30 @@ def test_restore_noops_when_no_backup(tmp_path):
     assert result["action"] == "skipped"
 
 
+def test_restore_fails_closed_on_unreadable_wing(tmp_palace_with_wing_user, tmp_path, monkeypatch):
+    """A read failure must SKIP restore (fail-closed), never assume empty and replay.
+
+    Regression guard: the old emptiness probe swallowed read exceptions and
+    returned "empty", which would replay a backup over a live (but transiently
+    unreadable) wing_user. The guard must instead skip restore when it cannot
+    confirm the wing is empty.
+    """
+    exp = tmp_path / "exports"
+    snapshot_wing_user(tmp_palace_with_wing_user, exp)  # a valid 2-drawer backup exists
+
+    import src.restore_wing_user as rwu
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated chroma read failure")
+
+    # The emptiness probe reads via get_collection in restore_wing_user's namespace.
+    monkeypatch.setattr(rwu, "get_collection", _boom)
+
+    result = rwu.restore_if_empty(tmp_palace_with_wing_user, exp)
+    assert result["action"] == "skipped"
+    assert "fail-closed" in result["reason"]
+
+
 def test_restore_only_touches_user_wing(tmp_path):
     """restore_wing_user must not import or re-upsert non-user-wing drawers.
 

@@ -1,6 +1,7 @@
 """StreamableHTTP MCP server composing mempalace + custom tools."""
 
 import os
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
@@ -405,6 +406,15 @@ def create_server(
     # TODO: mempalace_diary_read_time — no upstream tool takes a time window
     # for diary reads (only last_n); skipped. See Phase 4B report.
 
+    # --- Intentionally NOT registered (upstream v3.4.x additions) ---
+    # Tools are hand-registered above rather than iterated from upstream's TOOLS
+    # dict, so new upstream tools never auto-expose. These three are deliberately
+    # omitted because they don't fit the wrapper's model:
+    #   * tool_mine — raw filesystem mining; bypasses our SyncEngine git-diff
+    #     orchestration (clients should use memory_sync instead).
+    #   * tool_list_hallways / tool_delete_hallway — upstream "hallway" records;
+    #     the wrapper links knowledge via tunnels + the halls/rooms taxonomy.
+
     return mcp
 
 
@@ -438,10 +448,61 @@ def _attach_health_route(server: FastMCP, palace_path: str | None = None) -> Non
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=503)
 
 
+def _snapshot_cycle(palace_path: str, exports_dir: str, retention_days: int):
+    """Run one wing_user snapshot + prune pass. Best-effort — never raises.
+
+    Returns the snapshot path on success, or None if the cycle failed (a failed
+    snapshot must never take down the timer thread that calls it).
+    """
+    from src.wing_user_snapshot import prune_snapshots, snapshot_wing_user
+
+    try:
+        path = snapshot_wing_user(Path(palace_path), Path(exports_dir))
+        prune_snapshots(Path(exports_dir), retention_days)
+        return path
+    except Exception:
+        return None
+
+
+def _start_daily_snapshot(
+    palace_path: str,
+    exports_dir: str,
+    retention_days: int,
+    interval_seconds: int = 86_400,
+):
+    """Spawn a daemon thread that snapshots wing_user once per ``interval_seconds``.
+
+    Closes the boot-only-snapshot gap (observed: the DR floor went 15 days stale
+    on a container that had been up two weeks). Daemon + best-effort so it never
+    blocks shutdown and a snapshot failure never crashes serving.
+    """
+    import threading
+    import time
+
+    def _loop() -> None:
+        while True:
+            time.sleep(interval_seconds)
+            _snapshot_cycle(palace_path, exports_dir, retention_days)
+
+    thread = threading.Thread(target=_loop, name="wing-user-snapshot", daemon=True)
+    thread.start()
+    return thread
+
+
 def main():
     """Entry point: create server and run with StreamableHTTP transport."""
     server = create_server()
     _attach_health_route(server)
+
+    # Keep the wing_user disaster-recovery floor fresh on long-lived containers:
+    # the entrypoint only snapshots at boot, so a container up for weeks lets the
+    # newest backup go stale. Best-effort daemon — never blocks serving.
+    exports = os.environ.get("EXPORTS_PATH") or os.environ.get(
+        "MEMPALACE_EXPORTS_DIR", "/data/exports"
+    )
+    retention = int(os.environ.get("WING_USER_RETENTION_DAYS", "7"))
+    _start_daily_snapshot(palace_path_default(), exports, retention)
+
     server.run(transport="streamable-http")
 
 
