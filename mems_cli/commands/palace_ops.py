@@ -45,7 +45,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     logs_p = subparsers.add_parser("logs", help="Show recent palace drawer entries.")
     logs_p.add_argument("--limit", "-n", type=int, default=10)
-    logs_p.add_argument("--wing", default=None, help="(reserved — filter not yet plumbed)")
+    logs_p.add_argument("--wing", default=None, help="Only show entries from this wing.")
     logs_p.set_defaults(func=cmd_logs)
 
     export_p = subparsers.add_parser("export", help="Export a wing as a .wingpack.")

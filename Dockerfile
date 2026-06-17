@@ -20,7 +20,8 @@ ENV PALACE_PATH=/data/palace \
     MEMPALACE_HOOKS_AUTO_SAVE=true \
     MEMPALACE_EAGER_WARMUP=1 \
     MEMPALACE_TOPIC_TUNNEL_MIN_COUNT=2 \
-    MEMPALACE_ENTITY_LANGUAGES=en
+    MEMPALACE_ENTITY_LANGUAGES=en \
+    MEMPALACE_MAX_BACKUPS=10
 
 # Install project + deps. Copy pyproject + sources needed for the build backend.
 COPY pyproject.toml README.md ./

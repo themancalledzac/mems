@@ -7,9 +7,9 @@
 >
 > **For current state, use these instead:**
 >
-> - **What's shipped + how to use it:** [`README.md`](README.md)
-> - **Taxonomy (the source of truth):** [`config/mempalace.yaml`](config/mempalace.yaml) — the YAML is canonical; if a description here disagrees, the YAML wins.
-> - **What works vs what's pending:** [`docs/2026-05-06-handoff.md`](docs/2026-05-06-handoff.md)
+> - **What's shipped + how to use it:** [`README.md`](../../README.md)
+> - **Taxonomy (the source of truth):** [`config/mempalace.yaml`](../../config/mempalace.yaml) — the YAML is canonical; if a description here disagrees, the YAML wins.
+> - **What works vs what's pending:** [`docs/2026-05-06-handoff.md`](../2026-05-06-handoff.md)
 > - **Live wing list + drawer counts:** call `mempalace_status` (the `## 11. Current Wings` section below is wrong — those wings are not registered).
 >
 > This file is scheduled to be merged into `ARCHITECTURE.md` or deleted entirely
@@ -42,8 +42,8 @@
 | Host OS               | macOS/Linux with Docker Desktop + bash/zsh                                                                                                                                |
 | Container base        | `docker`, `python3` (for setup scripts + CLI)                                                                                                                             |
 | Python                | 3.12 – 3.14                                                                                                                                                               |
-| Core deps (Docker)    | `mempalace>=0.3.4`, `mcp[cli]`, `uvicorn`, `starlette`, `pyyaml>=6.0`, `h2`                                                                                               |
-| Core deps (pyproject) | `mempalace>=0.3.4`, `mcp[cli]`, `uvicorn`, `starlette`, `sentence-transformers`, `pyyaml>=6.0`, `h2`, `chromadb>=0.5.0`                                                   |
+| Core deps (Docker)    | `mempalace>=3.4.1`, `mcp[cli]`, `uvicorn`, `starlette`, `pyyaml>=6.0`, `h2`                                                                                               |
+| Core deps (pyproject) | `mempalace>=3.4.1`, `mcp[cli]`, `uvicorn`, `starlette`, `sentence-transformers`, `pyyaml>=6.0`, `h2`, `chromadb>=1.5.4`                                                   |
 | Dev deps              | `pytest>=7.0`, `ruff>=0.4.0`                                                                                                                                              |
 | Python style          | `ruff` (B,L,P,W), line-length 100, double-quote, target py39                                                                                                              |
 | Build backend         | `hatchling`; `packages = ["src", "mems_cli"]`                                                                                                                             |
@@ -126,6 +126,13 @@ vector index is rebuilt. Always finish an engine-touching upgrade with a smoke
 that runs an actual wing-filtered search against the *existing* index; a
 fresh-empty-volume boot does **not** exercise this code path, so a clean smoke
 can pass while prod is broken.
+
+> **Note (2026-06, mempalace v3.4.1):** v3.4.x ships the corrective HNSW fixes
+> for this exact family — #1710 (post-deletion over-quarantine that destroyed
+> vectors), #1573 (re-arm the quarantine gate on mtime/reconnect), #1579
+> (small-palace bloat thresholds), #1747 (`repair --yes` now runs the
+> post-rebuild FTS5 VACUUM). The quarantine-on-upgrade risk above is much
+> reduced from 3.4.1 onward, but the wing-filtered smoke is still mandatory.
 
 ---
 
@@ -423,7 +430,7 @@ HTTP endpoints also include `/health` (JSON status, `fix_blob_ids`, `full_refres
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/health` says degraded                    | Read `sync_reason`: `mempalace.yaml not mounted` → check `~/.config/mcp`; `SIGSEGV on teardown` → usually benign, run `mempalace_resync`; `sync exited non-zero` → `mems logs` |
 | Files in wrong room                        | Confirm `exact_stem_patch` archive; rename file to match room OR add specific keywords. Avoid short generic keywords                                                           |
-| Wingpack import refuses embedding mismatch | Align mempalace version both sides (`>=0.3.4`); inspect bundle: `unzip -p bundle.wingpack manifest.json \| jq .`                                                               |
+| Wingpack import refuses embedding mismatch | Align mempalace version both sides (`>=3.4.1`); inspect bundle: `unzip -p bundle.wingpack manifest.json \| jq .`                                                               |
 | `git pull` rejects `.wingpack`             | `git check-ignore -v .mempalace/wings/*.wingpack` — if matched, fix `.gitignore` (add `!.mempalace/wings/*.wingpack` exception)                                                |
 | Container can't write under mount          | Compose entry must be `rw`. Dubious-ownership errors → already handled by `-c safe.directory=*`, don't patch `.gitconfig`                                                      |
 | `wing_user` empty after rebuild            | `ls -t exports/wing_user_backup_*.json \| head -1`. If present, `docker compose down && docker compose up -d` — restore re-fires. If aged out, re-capture via `mems my note`   |

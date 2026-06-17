@@ -8,12 +8,13 @@
 #   MEMPALACE_TOPIC_TUNNEL_MIN_COUNT — co-occurrence threshold for topic tunnels (default: 1, wrapper sets 2)
 #   MEMPALACE_ENTITY_LANGUAGES  — comma list, e.g. "en,pt-br" (default: en)
 #   MEMPALACE_MAX_CHUNKS_PER_FILE — safety cap (default: upstream's tuned value)
+#   MEMPALACE_MAX_BACKUPS       — cap on repair/migrate backup dirs kept (default: 10, 0 = keep all)
 #
 # Shape: wings[<wing>].halls[<hall>].rooms is a list of {name, description, keywords}.
 #   - Halls are broad feature areas ("landing-page", "media-pipeline").
 #   - Rooms are sub-topics within a hall.
 #   - Keywords are short tokens matched against file basenames, path segments,
-#     and file content (see src/filters.py).
+#     and file content (routing handled by upstream mempalace.miner.detect_room).
 #
 # A file is routed to a room via priority-ordered detection:
 #   1. rooms.json explicit blocks (per-wing override)
