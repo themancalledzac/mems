@@ -1,12 +1,16 @@
 """Idempotent merge of Memory wrapper hooks into ~/.claude/settings.json.
 
-Adds three entries:
+Adds four entries:
   - PreToolUse: Agent → wrapper's pretooluse_agent_orientation.py
+  - PreToolUse: Bash|Grep|Glob|Read → wrapper's pretooluse_fs_gate.py
   - Stop → upstream mempalace's mempal_save_hook.sh
   - PreCompact → upstream mempalace's mempal_precompact_hook.sh
 
+The two PreToolUse hooks are complementary: the first gates *subagent dispatch*,
+the second gates the *parent loop's* own filesystem discovery.
+
 Designed to be invoked from scripts/install_claude_code.sh. Reads:
-  HOOK_PRETOOLUSE_CMD, HOOK_STOP_CMD, HOOK_PRECOMPACT_CMD
+  HOOK_PRETOOLUSE_CMD, HOOK_FS_GATE_CMD, HOOK_STOP_CMD, HOOK_PRECOMPACT_CMD
   SETTINGS_PATH
 """
 
@@ -16,18 +20,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def _already_present(entries, command):
-    return any(
-        h.get("command") == command
-        for entry in entries
-        if isinstance(entry, dict)
-        for h in (entry.get("hooks") or [])
-    )
+def _already_present(entries, command, matcher=None):
+    """True if `command` is registered under `matcher`.
+
+    Keyed on (matcher, command), not command alone: one event can carry several
+    entries that share a command but gate different tools, and deduping on the
+    command by itself would silently drop the second one.
+    """
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("matcher") != matcher:
+            continue
+        if any(h.get("command") == command for h in (entry.get("hooks") or [])):
+            return True
+    return False
 
 
 def main() -> int:
     settings_path = Path(os.environ["SETTINGS_PATH"])
     pretool = os.environ["HOOK_PRETOOLUSE_CMD"]
+    fs_gate = os.environ["HOOK_FS_GATE_CMD"]
     stop = os.environ["HOOK_STOP_CMD"]
     precompact = os.environ["HOOK_PRECOMPACT_CMD"]
 
@@ -54,6 +67,15 @@ def main() -> int:
             },
         ),
         (
+            "PreToolUse",
+            fs_gate,
+            {
+                # Pipe-separated exact tool names (per the Claude Code hook reference).
+                "matcher": "Bash|Grep|Glob|Read",
+                "hooks": [{"type": "command", "command": fs_gate, "timeout": 10}],
+            },
+        ),
+        (
             "Stop",
             stop,
             {
@@ -76,7 +98,7 @@ def main() -> int:
         if not isinstance(entries, list):
             entries = []
             hooks[key] = entries
-        if _already_present(entries, cmd):
+        if _already_present(entries, cmd, entry.get("matcher")):
             print(f"skip - {key} hook already present: {cmd}")
             continue
         entries.append(entry)

@@ -13,6 +13,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from mems_cli import protocol_audit
 from mems_cli.common import extract_tool_result, print_json, print_table
 from mems_cli.palace_client import PalaceClient, PalaceClientError
 
@@ -97,8 +98,25 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     doctor_p.add_argument(
         "--palace-path",
         dest="palace_path",
-        required=True,
-        help="Path to the palace directory.",
+        default=None,
+        help="Path to the palace directory. Required unless --protocol is given.",
+    )
+    doctor_p.add_argument(
+        "--protocol",
+        action="store_true",
+        help="Audit mempalace-before-filesystem compliance across recent sessions.",
+    )
+    doctor_p.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="Lookback window for --protocol (default: 30).",
+    )
+    doctor_p.add_argument(
+        "--json",
+        dest="as_json",
+        action="store_true",
+        help="Emit the --protocol audit as JSON.",
     )
     doctor_p.set_defaults(func=cmd_doctor)
 
@@ -238,16 +256,16 @@ def cmd_export(args: argparse.Namespace) -> int:
 # --- upstream-CLI shell-outs --------------------------------------------------
 
 
-def cmd_make(args: argparse.Namespace) -> dict:
+def cmd_make(args: argparse.Namespace) -> int:
     """Build/initialize a palace from a directory. Delegates to `mempalace init --auto-mine`."""
     cmd = ["mempalace", "init", "--auto-mine", str(args.dir)]
     if getattr(args, "yes", False):
         cmd.insert(2, "--yes")
     result = subprocess.run(cmd, check=False)
-    return {"ok": result.returncode == 0, "returncode": result.returncode}
+    return EXIT_OK if result.returncode == 0 else EXIT_SERVER_ERROR
 
 
-def cmd_restore(args: argparse.Namespace) -> dict:
+def cmd_restore(args: argparse.Namespace) -> int:
     """Restore palace from backup.
 
     Routes the user-wing slice to the wrapper's own restore (no upstream equivalent
@@ -259,7 +277,9 @@ def cmd_restore(args: argparse.Namespace) -> dict:
 
         palace = Path(args.palace_path)
         exports = palace.parent / "exports"
-        return restore_if_empty(palace, exports)
+        result = restore_if_empty(palace, exports)
+        print_json(result)
+        return EXIT_OK if (result or {}).get("ok", True) else EXIT_SERVER_ERROR
 
     # `--palace` is a global flag on the mempalace CLI, before the subcommand.
     cmd = ["mempalace", "--palace", args.palace_path, "repair", "--mode", "from-sqlite"]
@@ -267,18 +287,36 @@ def cmd_restore(args: argparse.Namespace) -> dict:
         cmd.extend(["--source", args.source])
     if getattr(args, "archive_existing", False):
         cmd.append("--archive-existing")
-    result = subprocess.run(cmd, check=False)
-    return {"ok": result.returncode == 0, "returncode": result.returncode}
+    completed = subprocess.run(cmd, check=False)
+    return EXIT_OK if completed.returncode == 0 else EXIT_SERVER_ERROR
 
 
-def cmd_doctor(args: argparse.Namespace) -> dict:
-    """Diagnostic: pre-flight hook paths + delegate index health to `mempalace status`."""
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Diagnostic: pre-flight hook paths + delegate index health to `mempalace status`.
+
+    With `--protocol`, runs the session-transcript compliance audit instead and
+    skips the palace checks (no palace path needed to read transcripts).
+    """
+    if getattr(args, "protocol", False):
+        run_protocol_audit(args)
+        return EXIT_OK
+
+    if not getattr(args, "palace_path", None):
+        print("error: --palace-path is required (or pass --protocol)", file=sys.stderr)
+        return EXIT_USER_ERROR
+
     issues = []
     save_hook = Path.home() / "Code" / "mempalace" / "hooks" / "mempal_save_hook.sh"
     pc_hook = Path.home() / "Code" / "mempalace" / "hooks" / "mempal_precompact_hook.sh"
     for f in (save_hook, pc_hook):
         if not f.exists():
             issues.append(f"missing hook: {f}")
+
+    if not protocol_audit.gate_installed():
+        issues.append(
+            "fs-gate hook not registered in ~/.claude/settings.json "
+            "(run: bash scripts/install_claude_code.sh)"
+        )
 
     # `--palace` is a global flag on the mempalace CLI, before the subcommand.
     status = subprocess.run(
@@ -290,4 +328,28 @@ def cmd_doctor(args: argparse.Namespace) -> dict:
     if status.returncode != 0:
         issues.append(f"mempalace status failed: {status.stderr.strip()}")
 
-    return {"ok": not issues, "issues": issues, "status_output": status.stdout}
+    for issue in issues:
+        print(f"issue: {issue}", file=sys.stderr)
+    if status.stdout:
+        print(status.stdout)
+    return EXIT_OK if not issues else EXIT_SERVER_ERROR
+
+
+def run_protocol_audit(args: argparse.Namespace) -> dict:
+    """`mems doctor --protocol` — measure Hard Rule #1 compliance."""
+    data = protocol_audit.audit(days=getattr(args, "days", 30))
+    installed = protocol_audit.gate_installed()
+    data["gate_installed"] = installed
+    data["gate_mode"] = protocol_audit.gate_mode()
+
+    if getattr(args, "as_json", False):
+        print_json(data)
+        return data
+
+    print(protocol_audit.format_report(data))
+    print()
+    if installed:
+        print(f"  fs-gate hook: installed (mode: {data['gate_mode']})")
+    else:
+        print("  fs-gate hook: NOT INSTALLED — run: bash scripts/install_claude_code.sh")
+    return data

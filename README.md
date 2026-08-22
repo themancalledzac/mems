@@ -119,7 +119,7 @@ Artifacts live under `integration/` and the installers under `scripts/`:
   `integration/mempalace_codex_append.toml` to `~/.config/codex/config.toml`
   (guarded by a `[mcp_servers.mempalace]` marker so reruns skip).
 - **Claude Code** — `scripts/install_claude_code.sh` installs three hooks
-  (`PreToolUse: Agent`, `Stop`, `PreCompact`) idempotently into
+  (`PreToolUse: Agent`, `PreToolUse: Bash|Grep|Glob|Read`, `Stop`, `PreCompact`) idempotently into
   `~/.claude/settings.json`. See the **Claude Code Setup** section below
   for the full flow. Register the MCP server globally with
   `claude mcp add --transport http mempalace --scope user http://localhost:8787/mcp`.
@@ -186,13 +186,43 @@ rebuilds; they are wiped only by `docker compose down -v`.
 
 ## Claude Code Setup
 
-The wrapper installs three Claude Code hooks via `scripts/install_claude_code.sh`:
+The wrapper installs four Claude Code hooks via `scripts/install_claude_code.sh`:
 
 | Hook | Purpose |
 |---|---|
-| `PreToolUse: Agent` | Inject mempalace orientation before sub-agent calls |
+| `PreToolUse: Agent` | Block sub-agent dispatch that omits the mempalace orientation block |
+| `PreToolUse: Bash\|Grep\|Glob\|Read` | Remind the main agent when filesystem discovery runs without a mempalace search |
 | `Stop` | Auto-mine the active transcript every 15 user messages |
 | `PreCompact` | Emergency save before context compaction |
+
+### The filesystem gate
+
+`pretooluse_fs_gate.py` enforces CLAUDE.md Hard Rule #1 for the main agent — the
+case procedural rules alone did not cover. Before the gate existed, 82% of
+filesystem batches (244 of 297, across 86 sessions) ran to 3+ calls with no
+mempalace search.
+
+It reads the session transcript Claude Code passes on stdin and counts
+consecutive discovery calls since the last `mempalace_*` call. It calls no MCP
+tool and keeps no state file, so there is no recursion and nothing to go stale.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `MEMPALACE_FS_GATE_MODE` | `warn` | `warn` injects a reminder; `block` denies the call; `off` disables |
+| `MEMPALACE_FS_GATE_THRESHOLD` | `3` | Consecutive discovery calls before it fires (then every multiple) |
+| `MEMPALACE_FS_GATE_TAIL_BYTES` | `524288` | Transcript tail window to scan |
+
+Only `Bash` commands that lead a segment with a discovery verb (`grep`, `rg`,
+`find`, `ls`, `cat`, `sed`, `awk`, `wc`, `tree`, `fd`) count — `git commit`,
+`pytest`, and `git log | head` do not.
+
+Measure compliance at any time:
+
+```bash
+mems doctor --protocol
+```
+
+Add `--days N` to change the window, `--json` for machine-readable output.
 
 The `Stop` and `PreCompact` scripts live in `~/Code/mempalace/hooks/` — install
 upstream mempalace there alongside this repo:

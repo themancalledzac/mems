@@ -1,4 +1,4 @@
-"""Verify install_claude_code.sh wires all three hooks idempotently.
+"""Verify install_claude_code.sh wires all four hooks idempotently.
 
 The install script defaults the Stop/PreCompact paths to
 ``$HOME/Code/mempalace/hooks/mempal_{save,precompact}_hook.sh`` and the
@@ -25,12 +25,21 @@ def _test_env(fake_home: Path) -> dict:
         "HOME": str(fake_home),
         "PATH": "/usr/bin:/bin",
         "HOOK_PRETOOLUSE_CMD": STUB_HOOK,
+        "HOOK_FS_GATE_CMD": STUB_HOOK,
         "HOOK_STOP_CMD": STUB_HOOK,
         "HOOK_PRECOMPACT_CMD": STUB_HOOK,
     }
 
 
-def test_script_installs_all_three_hooks(tmp_path):
+def _pretooluse_matchers(settings: dict) -> set[str]:
+    return {
+        entry.get("matcher")
+        for entry in settings.get("hooks", {}).get("PreToolUse", [])
+        if isinstance(entry, dict)
+    }
+
+
+def test_script_installs_all_four_hooks(tmp_path):
     fake_home = tmp_path / "home"
     fake_home.mkdir()
     (fake_home / ".claude").mkdir()
@@ -46,6 +55,29 @@ def test_script_installs_all_three_hooks(tmp_path):
     settings = json.loads((fake_home / ".claude" / "settings.json").read_text())
     hook_names = set(settings.get("hooks", {}).keys())
     assert {"PreToolUse", "Stop", "PreCompact"}.issubset(hook_names)
+
+    # Two distinct PreToolUse gates: subagent dispatch and parent-loop filesystem.
+    assert {"Agent", "Bash|Grep|Glob|Read"}.issubset(_pretooluse_matchers(settings))
+
+
+def test_fs_gate_hook_is_registered_with_real_path(tmp_path):
+    """Without an override, the fs-gate must point at the bundled script."""
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    (fake_home / ".claude").mkdir()
+
+    env = _test_env(fake_home)
+    del env["HOOK_FS_GATE_CMD"]
+    subprocess.run(["bash", str(SCRIPT)], env=env, check=True)
+
+    settings = json.loads((fake_home / ".claude" / "settings.json").read_text())
+    commands = [
+        hook.get("command", "")
+        for entry in settings["hooks"]["PreToolUse"]
+        if isinstance(entry, dict)
+        for hook in entry.get("hooks", [])
+    ]
+    assert any(c.endswith("pretooluse_fs_gate.py") for c in commands)
 
 
 def test_script_is_idempotent(tmp_path):
