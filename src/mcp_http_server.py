@@ -76,6 +76,7 @@ def create_server(
         origin: str = "agent",
         status: str | None = None,
         personal: bool = False,
+        session_id: str | None = None,
     ) -> dict:
         """File a user thought into a hall. A near-duplicate keeps its text and gains a revision.
 
@@ -91,6 +92,7 @@ def create_server(
             origin=origin,
             status=status,
             personal=personal,
+            session_id=session_id,
         )
 
     @mcp.tool()

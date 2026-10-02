@@ -1,4 +1,5 @@
 from src.mcp_http_server import create_server
+from src.user_wing import UserWing
 
 EXPECTED_PHASE_4A_TOOLS = {
     "mempalace_status",
@@ -102,7 +103,7 @@ class TestToolSchemas:
         server = create_server(palace_path=str(tmp_palace), config_path=str(tmp_config))
         tools = {t.name: t for t in server._tool_manager.list_tools()}
         expected = {
-            "mempalace_user_write": {"origin", "status", "personal"},
+            "mempalace_user_write": {"origin", "status", "personal", "session_id"},
             "mempalace_user_search": {
                 "since_days",
                 "source_wing",
@@ -194,6 +195,28 @@ class TestUserWingTools:
         assert [r["id"] for r in hits["results"]] == [legacy["id"]]
         summary = await call("mempalace_user_summary", {})
         assert "Keep it private" not in summary["text"]
+
+    async def test_write_passes_new_params_to_metadata(self, tmp_palace, tmp_config):
+        server = create_server(palace_path=str(tmp_palace), config_path=str(tmp_config))
+        created = await server._tool_manager.call_tool(
+            "mempalace_user_write",
+            {
+                "hall": "observations",
+                "content": "Orchestrator saw a stale branch",
+                "topic": "orch",
+                "source_wing": "memory",
+                "origin": "orch",
+                "status": "active",
+                "personal": True,
+                "session_id": "sess-123",
+            },
+        )
+        meta = UserWing(str(tmp_palace)).collection.get(ids=[created["id"]]).get("metadatas")[0]
+        assert meta["origin"] == "orch"
+        assert meta["status"] == "active"
+        assert meta["personal"] is True
+        assert meta["session_id"] == "sess-123"
+        assert meta["source_wing"] == "memory"
 
 
 class TestExtendedHandlers:
