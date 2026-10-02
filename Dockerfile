@@ -41,7 +41,9 @@ RUN chmod +x entrypoint.sh
 
 EXPOSE 8080
 
+# --max-time keeps curl under the healthcheck timeout so it self-terminates
+# cleanly (and is reaped by tini) instead of relying on Docker's SIGKILL.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD curl -fsS http://localhost:8080/health || exit 1
+    CMD curl -fsS --max-time 4 http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]

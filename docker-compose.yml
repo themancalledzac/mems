@@ -3,6 +3,10 @@ services:
     build: .
     container_name: mempalace
     restart: unless-stopped
+    # Run tini as PID 1 so orphaned children (e.g. SIGKILLed healthcheck curls)
+    # are reaped. Without this, PID 1 = python never reaps them and zombies
+    # accumulate unbounded — the 2026-07 incident hit 46k zombie curls.
+    init: true
     ports:
       # host:container — external stays 8787 (clients baked in), internal is 8080.
       - "8787:8080"

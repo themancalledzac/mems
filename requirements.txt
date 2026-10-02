@@ -1,7 +1,7 @@
 # 3.4.x is on PyPI. 3.4.1 carries the HNSW index-integrity fixes
 # (#1710/#1573/#1579/#1747) hardening the wing-filtered-search path, plus
 # #1540 (silent long-drawer truncation) from 3.3.6.
-mempalace>=3.4.1
+mempalace==3.6.0
 mcp[cli]>=1.0.0
 uvicorn>=0.30.0
 starlette>=0.38.0
