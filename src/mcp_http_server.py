@@ -430,15 +430,11 @@ def create_server(
 
 
 def _attach_health_route(server: FastMCP, palace_path: str | None = None) -> None:
-    """Mount GET /health (cheap liveness) + GET /health/deep (readiness).
+    """Mount GET /health (liveness) and GET /health/deep (wing summary).
 
-    FastMCP doesn't expose a health route natively; `custom_route` registers
-    them on `_custom_starlette_routes`, which `streamable_http_app()` picks up.
-
-    /health is O(1) and only proves the event loop is responsive — it is what
-    the Docker healthcheck probes, so a slow palace can never fail liveness.
-    /health/deep returns the wing summary (offloaded to a thread) for humans
-    and observability. Both return 200 on success / 503 on error.
+    The Docker healthcheck and the liveness watchdog probe /health, so it must
+    stay O(1) and never touch the palace. /health/deep scans the palace in a
+    worker thread and returns 503 on error.
     """
     from datetime import datetime, timezone
 
@@ -447,21 +443,11 @@ def _attach_health_route(server: FastMCP, palace_path: str | None = None) -> Non
     resolved = palace_path or palace_path_default()
 
     @server.custom_route("/health", methods=["GET"])
-    async def health(_request):  # noqa: ARG001 — Starlette requires the arg
-        # Liveness ONLY. Reaching this coroutine proves the asyncio event loop
-        # is turning — exactly what the Docker healthcheck needs to know. Keep
-        # it O(1): never touch the palace/HNSW here. (This previously called
-        # handle_list_wings() inline, scanning every drawer on the loop; as the
-        # palace grew the scan crossed the 5s healthcheck timeout and — with
-        # PID 1 not reaping the SIGKILLed curl — leaked a zombie per probe until
-        # the server wedged. See the 2026-07 incident writeup.)
+    async def health(_request):
         return JSONResponse({"ok": True, "ts": datetime.now(timezone.utc).isoformat()})
 
     @server.custom_route("/health/deep", methods=["GET"])
-    async def health_deep(_request):  # noqa: ARG001 — Starlette requires the arg
-        # Richer readiness probe (wing summary). NOT what Docker probes, so its
-        # cost can never take the container unhealthy, and it is offloaded to a
-        # worker thread so it never blocks the event loop either.
+    async def health_deep(_request):
         import anyio
 
         try:
@@ -524,17 +510,12 @@ def _start_liveness_watchdog(
     check_interval: int = 20,
     startup_grace: int = 120,
 ):
-    """Force-restart the process if the asyncio event loop wedges.
+    """Exit the process if /health stops answering for ``stall_seconds``.
 
-    The 2026-07 outage: the loop got stuck in a synchronous palace scan, so
-    every request (health + writes) starved while the process stayed 'up'.
-    Docker's restart policy can't recover a hung-but-alive PID 1, and the
-    unhealthy status went unacted-on for ~3 weeks.
-
-    This daemon thread runs OFF the loop, polls the loop's own /health over
-    loopback, and if the loop can't answer for ``stall_seconds`` it hard-exits
-    so ``restart: unless-stopped`` (or ``docker run --restart``) recovers us
-    cleanly — no docker.sock, no sidecar. Opt out with ``MEMPALACE_WATCHDOG=0``.
+    A daemon thread polls /health over loopback after ``startup_grace``. It uses
+    ``os._exit`` because a wedged event loop would also hang a graceful shutdown,
+    and relies on the container restart policy to bring the server back.
+    Set ``MEMPALACE_WATCHDOG=0`` to disable it.
     """
     import threading
     import time
@@ -547,20 +528,18 @@ def _start_liveness_watchdog(
 
     def _alive() -> bool:
         try:
-            with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310 — loopback
+            with urllib.request.urlopen(url, timeout=5) as resp:
                 return resp.status == 200
         except Exception:
             return False
 
     def _loop() -> None:
-        time.sleep(startup_grace)  # let boot (sync + warmup) finish before arming
+        time.sleep(startup_grace)
         last_ok = time.monotonic()
         while True:
             if _alive():
                 last_ok = time.monotonic()
             elif time.monotonic() - last_ok >= stall_seconds:
-                # Loop unresponsive past budget. Graceful shutdown would also
-                # hang, so exit hard and let the restart policy recover us.
                 print(
                     f"[watchdog] /health unresponsive >{stall_seconds}s — "
                     "exiting for restart",
@@ -579,17 +558,12 @@ def main():
     server = create_server()
     _attach_health_route(server)
 
-    # Keep the wing_user disaster-recovery floor fresh on long-lived containers:
-    # the entrypoint only snapshots at boot, so a container up for weeks lets the
-    # newest backup go stale. Best-effort daemon — never blocks serving.
     exports = os.environ.get("EXPORTS_PATH") or os.environ.get(
         "MEMPALACE_EXPORTS_DIR", "/data/exports"
     )
     retention = int(os.environ.get("WING_USER_RETENTION_DAYS", "7"))
     _start_daily_snapshot(palace_path_default(), exports, retention)
 
-    # Self-heal: force a restart if the event loop ever wedges (the 2026-07
-    # failure mode). Runs off the loop, no docker.sock — see _start_liveness_watchdog.
     _start_liveness_watchdog(int(os.environ.get("MEMORY_PORT", "8787")))
 
     server.run(transport="streamable-http")

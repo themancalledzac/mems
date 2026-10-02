@@ -264,14 +264,7 @@ class TestHealthRoute:
         assert "/health" in paths
 
     def test_health_is_cheap_liveness_only(self, tmp_palace, tmp_config, monkeypatch):
-        """/health must be O(1) liveness and must NOT scan the palace.
-
-        Regression guard for the 2026-07 incident: /health used to call
-        handle_list_wings() inline, scanning every drawer on the event loop, so
-        a slow palace crossed the 5s healthcheck timeout and — with PID 1 not
-        reaping the SIGKILLed curl — leaked a zombie per probe until the server
-        wedged. /health must answer without ever touching handle_list_wings.
-        """
+        """/health answers without calling handle_list_wings, so a slow palace cannot fail it."""
         import asyncio
 
         from src import mcp_http_server

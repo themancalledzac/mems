@@ -113,6 +113,29 @@ cutting three sections that restated Hard Rules #1/#3/#4/#5/#6 verbatim — a ne
 removal even after adding the hook line, per that section's own pruning policy.
 Backup at `/tmp/CLAUDE.md.bak.<ts>`.
 
+## Health route and watchdog (2026-07 incident)
+
+Also on this branch. In 2026-07 the server wedged for about three weeks.
+`/health` called `handle_list_wings()` inline, which scans every drawer on the
+event loop. As the palace grew, that scan passed the 5 s healthcheck timeout.
+Docker SIGKILLed each healthcheck `curl`, and PID 1 was Python, which never
+reaped them. Zombie curls piled up to about 46k until the server stopped
+answering. The process stayed up, so `restart: unless-stopped` never fired,
+and nobody acted on the unhealthy status.
+
+The fixes:
+
+- `/health` returns a timestamp only. It proves the loop is turning and never
+  touches the palace. The wing summary moved to `/health/deep`, which runs in a
+  worker thread.
+- `docker-compose.yml` sets `init: true`, so tini is PID 1 and reaps orphans.
+  The healthcheck `curl` gets `--max-time 4`, so it exits before the timeout.
+- `_start_liveness_watchdog` polls `/health` over loopback from a daemon
+  thread. If the loop does not answer for 90 s, it calls `os._exit(1)` and the
+  restart policy brings the server back. `MEMPALACE_WATCHDOG=0` disables it.
+- `mcp[cli]` is capped below 2. mcp 2.x removes FastMCP, and the server fails
+  at import.
+
 ## Follow-up
 
 The gate ships in `warn` mode against a 950-reminder backlog. Re-run
