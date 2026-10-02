@@ -20,6 +20,7 @@ VALID_ORIGINS = frozenset({"agent", "prompt", "orch"})
 VALID_STATUSES = frozenset({"open", "active", "parked", "done", "superseded"})
 OPEN_BY_DEFAULT_HALLS = frozenset({"goals", "questions"})
 MALFORMED_MARKERS = ("<parameter", "</parameter>", "</content>", "<invoke")
+"""Substrings that mark leaked tool-call markup; write() rejects content holding any of them."""
 
 DEDUP_THRESHOLD = 0.15
 MAX_REVISIONS = 3
@@ -41,11 +42,15 @@ HALL_LABELS = {
 }
 
 
+def _error(code: str, message: str) -> dict:
+    return {"status": "error", "code": code, "message": message}
+
+
 def _invalid(kind: str, value, allowed: frozenset) -> dict:
-    return {
-        "status": "error",
-        "message": f"Invalid {kind}: {value}. Must be one of: {', '.join(sorted(allowed))}",
-    }
+    return _error(
+        f"invalid_{kind}",
+        f"Invalid {kind}: {value}. Must be one of: {', '.join(sorted(allowed))}",
+    )
 
 
 def _parse_iso_epoch(value) -> float | None:
@@ -178,7 +183,7 @@ class UserWing:
         if hall not in VALID_HALLS:
             return _invalid("hall", hall, VALID_HALLS)
         if any(marker in content for marker in MALFORMED_MARKERS):
-            return {"status": "error", "message": "malformed: content contains tool-call markup"}
+            return _error("malformed", "malformed: content contains tool-call markup")
         if origin not in VALID_ORIGINS:
             return _invalid("origin", origin, VALID_ORIGINS)
         if status is not None and status not in VALID_STATUSES:
@@ -363,9 +368,9 @@ class UserWing:
         except Exception:
             found = None
         if not found or not found.get("ids"):
-            return {"status": "error", "message": f"Unknown drawer id: {drawer_id}"}
+            return _error("not_found", f"Unknown drawer id: {drawer_id}")
         if (found.get("metadatas") or [{}])[0].get("wing") != "user":
-            return {"status": "error", "message": f"Not a user wing entry: {drawer_id}"}
+            return _error("not_found", f"Not a user wing entry: {drawer_id}")
         self.collection.update(ids=[drawer_id], metadatas=[{"status": status}])
         return {"status": "updated", "id": drawer_id, "entry_status": status}
 

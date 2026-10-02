@@ -32,6 +32,7 @@ class TestUserWingWrite:
             topic="test",
         )
         assert result["status"] == "error"
+        assert result["code"] == "invalid_hall"
 
     def test_write_with_source_wing(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
@@ -276,12 +277,14 @@ class TestWriteRecencyMetadata:
         wing = UserWing(palace_path=str(tmp_palace))
         r = wing.write(hall="goals", content="x", topic="t", origin="robot")
         assert r["status"] == "error"
+        assert r["code"] == "invalid_origin"
         assert wing.collection.count() == 0
 
     def test_invalid_status_rejected(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
         r = wing.write(hall="goals", content="x", topic="t", status="maybe")
         assert r["status"] == "error"
+        assert r["code"] == "invalid_status"
         assert wing.collection.count() == 0
 
     def test_malformed_content_rejected(self, tmp_palace):
@@ -295,6 +298,7 @@ class TestWriteRecencyMetadata:
             r = wing.write(hall="observations", content=bad, topic="t")
             assert r == {
                 "status": "error",
+                "code": "malformed",
                 "message": "malformed: content contains tool-call markup",
             }
         assert wing.collection.count() == 0
@@ -435,6 +439,16 @@ class TestSearchRecency:
         public = {r["id"] for r in public}
         assert public == {"user-legacy-goal", "user-done"}
 
+    def test_open_filter_matches_legacy_goals_and_questions_only(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "pending item", hall="goals", drawer_id="user-goal")
+        _put(wing, "pending item", hall="questions", drawer_id="user-question")
+        _put(wing, "pending item", hall="decisions", drawer_id="user-decision")
+        _put(wing, "pending item", hall="observations", drawer_id="user-observation")
+        hits = wing.search(query="pending item", status="open")["results"]
+        assert {r["id"] for r in hits} == {"user-goal", "user-question"}
+        assert all(r["status"] is None for r in hits)
+
     def test_n_results_caps_output(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
         for i in range(5):
@@ -476,6 +490,19 @@ class TestRecent:
             "user-d1",
         ]
 
+    def test_recent_open_filter_matches_legacy_goals_and_questions_only(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "g", hall="goals", days_ago=1, drawer_id="user-goal")
+        _put(wing, "q", hall="questions", days_ago=2, drawer_id="user-question")
+        _put(wing, "d", hall="decisions", days_ago=1, drawer_id="user-decision")
+        _put(wing, "o", hall="observations", days_ago=1, drawer_id="user-observation")
+        _put(wing, "a", hall="decisions", days_ago=1, drawer_id="user-active", status="active")
+        assert [r["id"] for r in wing.recent(status="open")["results"]] == [
+            "user-goal",
+            "user-question",
+        ]
+        assert [r["id"] for r in wing.recent(status="active")["results"]] == ["user-active"]
+
     def test_recent_ignores_other_wings(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
         wing.collection.upsert(
@@ -500,19 +527,25 @@ class TestSetStatus:
     def test_set_status_rejects_invalid_status(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
         r = wing.write(hall="goals", content="Ship it", topic="mems")
-        assert wing.set_status(r["id"], "finished")["status"] == "error"
+        result = wing.set_status(r["id"], "finished")
+        assert result["status"] == "error"
+        assert result["code"] == "invalid_status"
         assert _meta(wing, r["id"])["status"] == "open"
 
     def test_set_status_unknown_id(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
-        assert wing.set_status("user-missing", "done")["status"] == "error"
+        result = wing.set_status("user-missing", "done")
+        assert result["status"] == "error"
+        assert result["code"] == "not_found"
 
     def test_set_status_rejects_non_user_entry(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
         wing.collection.upsert(
             ids=["repo-1"], documents=["code"], metadatas=[{"wing": "memory", "room": "src"}]
         )
-        assert wing.set_status("repo-1", "done")["status"] == "error"
+        result = wing.set_status("repo-1", "done")
+        assert result["status"] == "error"
+        assert result["code"] == "not_found"
         assert "status" not in _meta(wing, "repo-1")
 
 
