@@ -600,6 +600,23 @@ class TestSummaryRecency:
         assert "legacy goal" in lines[1]
         assert "finished goal" not in lines[1]
 
+    def test_summary_skips_entries_already_in_open_ideas(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        for i in range(3):
+            _put(wing, f"open goal {i}", hall="goals", days_ago=i)
+        _put(wing, "open question", hall="questions", days_ago=3)
+        _put(wing, "older goal", hall="goals", days_ago=10)
+        _put(wing, "oldest goal", hall="goals", days_ago=11)
+        _put(wing, "old question", hall="questions", days_ago=12)
+        text = wing.summary()["text"]
+        lines = {
+            line.split(":** ")[0].strip("*"): line.split(":** ")[1].split("; ")
+            for line in text.splitlines()[1:]
+        }
+        assert lines["Open ideas"] == ["open goal 0", "open goal 1", "open goal 2", "open question"]
+        assert lines["Goals"] == ["older goal", "oldest goal"]
+        assert lines["Recent questions"] == ["old question"]
+
     def test_summary_scoped_to_source_wing(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
         _put(wing, "alpha decision", hall="decisions", source_wing="alpha")

@@ -392,9 +392,9 @@ class UserWing:
     ) -> dict:
         """Compact user context: open goals and questions first, then the newest entries per hall.
 
-        Personal entries are always excluded and each item is cut to `max_item_chars`. Whole
-        items are dropped from the end, observations first, until the text fits
-        SUMMARY_CHAR_BUDGET.
+        Personal entries are always excluded, and hall sections skip entries already listed
+        under open ideas. Each item is cut to `max_item_chars`, and whole items are dropped
+        from the end, observations first, until the text fits SUMMARY_CHAR_BUDGET.
         """
         entries = [
             (drawer_id, meta)
@@ -412,7 +412,7 @@ class UserWing:
         ][:SUMMARY_OPEN_IDEAS]
         sections = [("Open ideas", open_ideas)] if open_ideas else []
         for hall, label in HALL_LABELS.items():
-            newest = [d for d, meta in entries if meta.get("hall") == hall]
+            newest = [d for d, meta in entries if meta.get("hall") == hall and d not in open_ideas]
             if newest:
                 sections.append((label, newest[: SUMMARY_HALL_ITEMS[hall]]))
 
