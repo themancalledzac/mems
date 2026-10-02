@@ -174,3 +174,32 @@ def test_main_rejects_dry_run_with_apply(tagger, monkeypatch):
     monkeypatch.setattr(tagger, "open_collection", lambda path: FakeCollection([]))
     with pytest.raises(SystemExit):
         tagger.main(["--dry-run", "--apply-unscoped"])
+
+
+def test_ids_dry_run_lists_named_entries_and_writes_nothing(tagger, capsys):
+    collection = FakeCollection(_rows())
+    result = tagger.run_ids(collection, ["user-code", "user-tagged", "repo-1", "nope"], apply=False)
+    assert collection.updates == []
+    assert result == {"to_tag": 1, "already_personal": 1, "missing": 2, "applied": 0}
+    out = capsys.readouterr().out
+    assert "user-code t Chose Go for the API" in out
+    assert "user-tagged already personal" in out
+    assert "repo-1 not found in the user wing" in out
+
+
+def test_main_ids_apply_tags_only_named_entries(tagger, monkeypatch):
+    collection = FakeCollection(_rows())
+    monkeypatch.setattr(tagger, "open_collection", lambda path: collection)
+    assert tagger.main(["--ids", "user-code, user-plain,repo-1", "--apply"]) == 0
+    assert collection.metas["user-code"]["personal"] is True
+    assert collection.metas["user-plain"]["personal"] is True
+    for untouched in ("user-job", "user-run", "user-cheat", "repo-1"):
+        assert "personal" not in collection.metas[untouched]
+
+
+def test_main_ids_rejects_apply_unscoped_and_empty_list(tagger, monkeypatch):
+    monkeypatch.setattr(tagger, "open_collection", lambda path: FakeCollection([]))
+    with pytest.raises(SystemExit):
+        tagger.main(["--ids", "user-code", "--apply-unscoped"])
+    with pytest.raises(SystemExit):
+        tagger.main(["--ids", " , "])

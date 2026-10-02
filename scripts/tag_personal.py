@@ -1,8 +1,9 @@
 """Tag personal, non-code User Wing entries with `personal=True`.
 
-Run inside the container: `python tag_personal.py [--apply] [--apply-unscoped]`. It is a dry run
-unless a flag is passed. `--apply` tags entries whose source_wing is a personal wing, and
-`--apply-unscoped` tags entries with no source_wing that match PERSONAL_KEYWORDS.
+Run inside the container: `python tag_personal.py [--apply] [--apply-unscoped] [--ids a,b]`. It is
+a dry run unless a flag is passed. `--apply` tags entries whose source_wing is a personal wing,
+`--apply-unscoped` tags unscoped entries matching PERSONAL_KEYWORDS, and `--ids` limits `--apply`
+to the named user-wing drawers.
 """
 
 import argparse
@@ -144,18 +145,78 @@ def run(collection, personal_wings: set[str], apply: bool, apply_unscoped: bool)
     }
 
 
+def plan_ids(collection, wanted: list[str]) -> dict:
+    """Split the wanted ids into untagged user entries, already personal ids and missing ids."""
+    results = collection.get(where={"wing": "user"}, include=["documents", "metadatas"])
+    found = {
+        drawer_id: (document, meta or {})
+        for drawer_id, document, meta in zip(
+            results.get("ids") or [], results.get("documents") or [], results.get("metadatas") or []
+        )
+    }
+    to_tag, already, missing = [], [], []
+    for drawer_id in wanted:
+        if drawer_id not in found:
+            missing.append(drawer_id)
+            continue
+        document, meta = found[drawer_id]
+        if meta.get("personal", False):
+            already.append(drawer_id)
+            continue
+        to_tag.append(
+            {
+                "id": drawer_id,
+                "topic": meta.get("topic", ""),
+                "source_wing": meta.get("source_wing"),
+                "text": " ".join((document or "").split()),
+            }
+        )
+    return {"to_tag": to_tag, "already_personal": already, "missing": missing}
+
+
+def run_ids(collection, wanted: list[str], apply: bool) -> dict:
+    """Print the named entries and tag the untagged ones when apply is set."""
+    plan = plan_ids(collection, wanted)
+    mode = "apply" if apply else "dry run"
+    print(f"[{mode}] {len(plan['to_tag'])} of {len(wanted)} named ids to tag")
+    for entry in plan["to_tag"]:
+        print(_line(entry))
+    for drawer_id in plan["already_personal"]:
+        print(f"- {drawer_id} already personal, left alone")
+    for drawer_id in plan["missing"]:
+        print(f"- {drawer_id} not found in the user wing")
+    applied = apply_tags(collection, plan["to_tag"]) if apply else 0
+    if applied:
+        print(f"[apply] tagged {applied} entries personal")
+    return {
+        "to_tag": len(plan["to_tag"]),
+        "already_personal": len(plan["already_personal"]),
+        "missing": len(plan["missing"]),
+        "applied": applied,
+    }
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--apply-unscoped", action="store_true")
     parser.add_argument("--wings", default=",".join(DEFAULT_PERSONAL_WINGS))
+    parser.add_argument("--ids", default=None)
     parser.add_argument("--palace-path", default=None)
     args = parser.parse_args(argv)
     if args.dry_run and (args.apply or args.apply_unscoped):
         parser.error("--dry-run cannot be combined with --apply or --apply-unscoped")
-    wings = {wing.strip() for wing in args.wings.split(",") if wing.strip()}
+    if args.ids is not None and args.apply_unscoped:
+        parser.error("--ids cannot be combined with --apply-unscoped")
     palace_path = args.palace_path or os.environ.get("PALACE_PATH", "/data/palace")
+    if args.ids is not None:
+        wanted = list(dict.fromkeys(i.strip() for i in args.ids.split(",") if i.strip()))
+        if not wanted:
+            parser.error("--ids needs at least one drawer id")
+        run_ids(open_collection(palace_path), wanted, apply=args.apply)
+        return 0
+    wings = {wing.strip() for wing in args.wings.split(",") if wing.strip()}
     run(
         open_collection(palace_path),
         wings,
