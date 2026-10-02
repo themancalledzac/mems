@@ -1,13 +1,8 @@
-# 3.4.x is on PyPI. 3.4.1 carries the HNSW index-integrity fixes
-# (#1710/#1573/#1579/#1747) hardening the wing-filtered-search path, plus
-# #1540 (silent long-drawer truncation) from 3.3.6.
 mempalace==3.6.0
-mcp[cli]>=1.0.0
+mcp[cli]>=1.27,<2
 uvicorn>=0.30.0
 starlette>=0.38.0
 pyyaml>=6.0,<7
 h2>=4.1.0
-# chromadb + sentence-transformers arrive transitively via mempalace;
-# listed explicitly here so Docker builds fail loudly if upstream drops them
 chromadb>=1.5.4
 sentence-transformers>=2.7.0

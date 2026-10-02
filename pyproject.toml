@@ -9,11 +9,8 @@ description = "Memory Palace multi-repo orchestrator — wraps mempalace with wi
 requires-python = ">=3.12,<3.15"
 readme = "README.md"
 dependencies = [
-    # 3.4.x is on PyPI. 3.4.1 carries the HNSW index-integrity fixes
-    # (#1710/#1573/#1579/#1747) that harden the wing-filtered-search path that
-    # bit us on the 3.3.6 deploy, plus #1540 (silent long-drawer truncation).
     "mempalace==3.6.0",
-    "mcp[cli]>=1.0.0",
+    "mcp[cli]>=1.27,<2",
     "uvicorn>=0.30.0",
     "starlette>=0.38.0",
     "sentence-transformers>=2.7.0",
