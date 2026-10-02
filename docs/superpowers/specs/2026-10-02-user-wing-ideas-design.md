@@ -1,8 +1,22 @@
 # User wing: recency, idea capture and the idea tree
 
-Status: draft for review (2026-10-02). Phase A is being built on `feat/user-wing-recency`. Phases B and C are not yet approved for planning.
+Status, 2026-10-02: Phase A shipped and is live (main at eda101c, container rebuilt from it). The owner approved Phases B and C as the direction on 2026-10-01. B0 and C0 are the next spikes. This file is also the tracker: the status board is under "Build order", and closed write-ups live in `2026-10-02-user-wing-ideas-history.md`.
 
 Companion spec: `2026-10-01-short-term-context-design.md` (the `recent` wing, the sweeper and the SessionStart brief). Phase B extends that sweeper. The two specs have been edited to agree.
+
+## How to use this doc
+
+- The status board under "Build order" is the source of truth. Every open item has a row and a status: COLD (a fresh session can start it) or BLOCKED (with the question and who answers it).
+- When an item closes, move its write-up to the history file in the same commit and leave the row marked done.
+- Each item gets its own branch off `main`. The repo has no remote by the owner's choice, so branches stay local and the owner merges. Put the item's report in the commit message and in its history entry.
+- Run tests in a venv pinned to the container's versions: `mcp[cli]>=1.27,<2` and `mempalace==3.6.0`, with the repo installed editable. The main checkout's `.venv` has mempalace 3.3.6, and the untracked `uv.lock` is stale. The repo installs with pip.
+- Never rebuild the image without the `mcp<2` cap. mcp 2.x removes `FastMCP`, and the server fails at import.
+- FastMCP 1.x runs sync tools on the event loop. New tool work must stay a user-wing-filtered read. A full-palace scan in the request path is what wedged the server in 2026-07.
+- Live-data scripts follow one pattern: `docker cp` into `/tmp`, dry run, a named snapshot copy (`wing_user_pre<step>_<date>.json`), apply, dry run again, remove the script. A same-day restart overwrites the dated daily backup, which is why the copy needs its own name.
+- orch depends on the tool names, parameters and hit fields listed in "How orch uses this". Do not rename them.
+- The `personal` flag keeps personal entries out of orch, not `source_wing`. Four of the five entries tagged in the 2026-10-02 audit had a code repo's `source_wing`.
+- Size items including tests. Phase A added 689 test lines against 560 code lines.
+- Write the command next to any number recorded here.
 
 ## Summary
 
@@ -35,6 +49,17 @@ Live store figures, out of 3,184 user entries:
 | Capture depends on agents remembering to call `user_write`. They often don't. | Ideas typed in a prompt never reach the store. |
 | The palace has personal, non-code wings (`running`, `job-search`). The user wing mixes personal entries with code ones. | Personal entries can leak into orch packs. |
 
+Re-measured 2026-10-02, after A2 and the personal audit. The method was a read-only script run in the container: `get(where={"wing": "user"})`, then counting metadata keys and markup substrings in the documents.
+
+- 3,202 entries.
+- 0 contain markup.
+- 117 have no `source_wing`.
+- 18 are tagged personal.
+- 2,603 distinct topics, 2,393 of them used once.
+- 9 entries carry `last_seen`, because only writes made since the deploy do.
+- No entry has `seen_count` above 1 yet.
+- Every `origin` is `agent` or missing. Phase B and orch have not written anything yet.
+
 ## Decisions already made
 
 1. Phase A ships first. orch's context plan depends on it.
@@ -43,7 +68,7 @@ Live store figures, out of 3,184 user entries:
 
 ## Phase A: recency (contract)
 
-Being built now on `feat/user-wing-recency`. This section is the contract Phases B and C and orch build on.
+Shipped and live since 2026-10-02. This section is the contract Phases B and C and orch build on. The build write-up is in the history file.
 
 ### New metadata
 
@@ -52,7 +77,7 @@ Missing keys read as defaults, so no migration is needed.
 | Key | Type | Default when missing |
 |---|---|---|
 | `last_seen` | ISO UTC string | the entry's `timestamp` |
-| `last_seen_epoch` | int (seconds) | from `timestamp` |
+| `last_seen_epoch` | float (seconds) | from `timestamp` |
 | `seen_count` | int, starts at 1 | 1 |
 | `origin` | `agent` \| `prompt` \| `orch` | `agent` |
 | `status` | `open` \| `active` \| `parked` \| `done` \| `superseded` | `open` for `goals` and `questions`, absent for other halls |
@@ -82,7 +107,7 @@ Results are ranked by `effective_distance = distance + recency_weight * min(age_
 
 ### Summary and status
 
-- `summary(source_wing)` starts with up to 4 open ideas, then the newest 2 goals, decisions, frustrations and discoveries, and the newest question and observation. It excludes personal entries and cuts each item at 220 characters. When the text passes about 2,400 characters it drops whole items from the end, observations first.
+- `summary(source_wing)` starts with up to 4 open ideas, then the newest 2 goals, decisions, frustrations and discoveries, and the newest question and observation. It excludes personal entries and cuts each item at 220 characters. Goals and questions skip entries already listed under open ideas. When the text passes 2,400 characters it drops whole items from the end, observations first. The limits are the `SUMMARY_*` constants in `src/user_wing.py`. At these limits about 10 items fit, so discoveries are usually dropped. See A3.
 - `status().recent_topics` returns the topics of the 30 newest entries, newest first.
 
 ### Repair and CLI
@@ -323,7 +348,7 @@ orch. The planner pack reads the base statements of clusters that match the requ
 
 ## How orch uses this
 
-orch's engine is its only Mempalace client. The plan for its context packs is `/Users/themancalledzac/Code/agent-orchestrator/docs/plans/2026-10-02-mempalace-context.md`, which is being rewritten against the Phase A API. In short:
+orch's engine is its only Mempalace client. The plan for its context packs is `/Users/themancalledzac/Code/agent-orchestrator/docs/plans/2026-10-02-mempalace-context.md`, which was rewritten against the Phase A API and committed there (dbb2946, 06bac91). In short:
 
 - Phase A. Pack queries use `mempalace_search`, `mempalace_user_search` with `source_wing`, `include_unscoped`, `status` and `since_days`, and `mempalace_user_recent` with `source_wing`, `include_unscoped=False` for what changed lately. orch always passes `include_personal=False` explicitly rather than relying on a default.
 - Phase B. orch writes back with `mempalace_user_write(origin="orch", topic="orch-<request_id>")`, two entries per request: the owner's answers in hall `decisions` (up to 2,000 characters) and one outcome line in hall `observations`. See "orch write-back".
@@ -332,26 +357,46 @@ orch's engine is its only Mempalace client. The plan for its context packs is `/
 
 ## Build order
 
-| Step | Work | Depends on |
-|---|---|---|
-| A1 | Phase A on `feat/user-wing-recency`: metadata, write behavior, search parameters, `user_recent`, `user_set_status`, `summary`, `status`, repair script, `mems my recent`. | — |
-| A2 | Run `scripts/repair_user_wing.py` on the live store, dry run first. | A1 |
-| B0 | The 2026-10-01 spec's phase 0 spike, plus an extraction check: run the extended prompt on 20 real transcripts in dry run and read every idea it returns. | 2026-10-01 phase 0 |
-| B1 | The 2026-10-01 spec's phases 1–6 (resolver, extractor, `recent` wing, summarizer, sweeper, hook). | 2026-10-01 spec |
-| B2 | `mempalace_user_write` gains `origin`, `personal`, `session_id` (skip if A1 has them). `personal: true` in `config/repos.json`. | A1 |
-| B3 | Extractor: `[user]`/`[assistant]` labels, prompts kept whole under the cap, last-processed prompt uuid in the state file. | B1 |
-| B4 | `ideas` in the digest schema, the quote check, `POST /recent` writing ideas and open items. Writes go to a log file instead of the palace for the first week. | B0, B2, B3 |
-| B5 | `mems ideas open`, `mems ideas stale`, the standup line, and the open-ideas section of `GET /brief`. | A1, B1 |
-| B6 | orch write-back, in the orch repo. | A1, B2 |
-| C0 | Spike on an export of the user wing: try `T_join` from 0.25 to 0.45 and a few `T_nest` values. Report cluster count, share of single-member clusters, largest cluster, and hand-check 20 random clusters. The 62 "mems/mempalace" variants should land in a handful of clusters, not 62 and not 1. | A2 |
-| C1 | `src/idea_tree.py`, the SQLite schema, assignment on write, async user-wing tools. | A1, C0 |
-| C2 | `POST /ideas/nightly`, `POST /ideas/statements`, the sweeper's nightly step and base-statement calls. | B1, C1 |
-| C3 | Backfill and the one-time base statements. | A2, C1, C2 |
-| C4 | `mempalace_idea_clusters`, `mempalace_idea_cluster`, `cluster_id` in search results and as a filter. | C1 |
-| C5 | Cluster section of `GET /brief`, `mems ideas` tree and the rest of the CLI, `doctor` checks, rebuild, `ideas.sqlite` in the daily snapshot. | C2, C4 |
-| C6 | Retire `mempalace_user_merge_topics`. | C3 |
+Status board. ✅ is done, with its write-up in the history file. COLD means a fresh session can start it now. BLOCKED names the question and who answers it.
 
-B2, B5 and B6 can run in parallel once A1 lands. C1 and C4 can run in parallel after C0.
+| Step | Work | Depends on | Size | Status |
+|---|---|---|---|---|
+| A1 | Phase A: metadata, write behavior, search parameters, `user_recent`, `user_set_status`, `summary`, `status`, repair script, `mems my recent`. | — | — | ✅ 2026-10-02, merged to main |
+| A2 | Run `scripts/repair_user_wing.py` on the live store. | A1 | — | ✅ 2026-10-02. 114 fixed, 0 left. |
+| A3 | Summary budget. At 2,400 characters about 10 items fit, so "Recent discoveries" is usually dropped. Proposed: raise `SUMMARY_CHAR_BUDGET` to 3,000 (about 750 tokens). One constant, one test, one rebuild. | A1 | S | BLOCKED on the owner: raise to 3,000, or keep 2,400? |
+| A4 | Dev-env cleanup. Recreate the main checkout's `.venv` with the container's pins. Delete `uv.lock`, because the repo installs with pip. Reconcile `config/repos.json`: it is tracked, but `.gitignore` lists it as per-user state. | A1 | S | COLD |
+| B0 | The 2026-10-01 spec's phase 0 spike, plus an extraction check. Run the extended prompt on 20 real transcripts in dry run and read every idea it returns. | 2026-10-01 phase 0 | M | COLD. The flags it needs exist on the installed CLI; see the B0 note below. |
+| B1 | The 2026-10-01 spec's phases 1–6 (resolver, extractor, `recent` wing, summarizer, sweeper, hook). | B0 | L | BLOCKED on B0 |
+| B2 | `mempalace_user_write` gains `origin`, `personal`, `session_id` (shipped in A1). Remaining: `personal: true` on `job-search` and `running` in `config/repos.json`, and writes under a personal repo force `personal=True`. | A1 | S | COLD. Changes `src/`, so it needs a rebuild in a window the owner agrees. |
+| B3 | Extractor: `[user]`/`[assistant]` labels, prompts kept whole under the cap, last-processed prompt uuid in the state file. | B1 | M | BLOCKED on B1 |
+| B4 | `ideas` in the digest schema, the quote check, `POST /recent` writing ideas and open items. Writes go to a log file instead of the palace for the first week. | B0, B2, B3 | M | BLOCKED on B0, B2, B3 |
+| B5a | `mems ideas open` and `mems ideas stale` (open entries untouched for 30+ days), plus a stale count in `mems standup`. CLI only, over `mempalace_user_recent` with `status="open"`. | A1 | S | COLD |
+| B5b | The open-ideas section of `GET /brief`. | B1, B5a | S | BLOCKED on B1 |
+| B6 | orch write-back. Tracked in agent-orchestrator as Task 6 of `docs/plans/2026-10-02-mempalace-context.md`. | A1 | — | BLOCKED on orch: r-9 and r-10 must close and orch's `feat/model-ladders` must merge first. |
+| C0 | Spike on an export of the user wing: try `T_join` from 0.25 to 0.45 and a few `T_nest` values. Report cluster count, share of single-member clusters, largest cluster, and hand-check 20 random clusters. The "mems/mempalace" topic variants should land in a handful of clusters, not one per variant and not one in total. | A2 | M | COLD |
+| C1 | `src/idea_tree.py`, the SQLite schema, assignment on write, async user-wing tools. | A1, C0 | L | BLOCKED on C0 |
+| C2 | `POST /ideas/nightly`, `POST /ideas/statements`, the sweeper's nightly step and base-statement calls. | B1, C1 | M | BLOCKED on B1, C1 |
+| C3 | Backfill and the one-time base statements. | A2, C1, C2 | M | BLOCKED on C1, C2 |
+| C4 | `mempalace_idea_clusters`, `mempalace_idea_cluster`, `cluster_id` in search results and as a filter. | C1 | M | BLOCKED on C1 |
+| C5 | Cluster section of `GET /brief`, `mems ideas` tree and the rest of the CLI, `doctor` checks, rebuild, `ideas.sqlite` in the daily snapshot. | C2, C4 | M | BLOCKED on C2, C4 |
+| C6 | Retire `mempalace_user_merge_topics`. | C3 | S | BLOCKED on C3 |
+| M1 | A Claude Code mod: a Mempalace status line, a toast on each user-wing write, and `/idea` and `/ideas`. Planned as Tasks 2 and 4 of `agent-orchestrator/docs/plans/2026-10-02-claude-code-mods.md`. The mod lives in `~/.claude`, not in this repo. | A1 | M | BLOCKED on the owner: that plan is uncommitted, and orch's `claude` binary must be pinned before the CLI is updated (its open question 2). |
+
+B2, B5a and C0 can run in parallel. C1 and C4 can run in parallel after C0.
+
+### B0 note: CLI flags checked 2026-10-02
+
+`claude --version` gives 2.1.280. `claude --help` lists `--no-session-persistence`, `--tools`, `--strict-mcp-config`, `--mcp-config`, `--output-format`, `--model`, `--bare` and `--setting-sources`. It does not list `--max-turns`, so B0 must check whether `-p` still accepts it.
+
+orch's service runs the same `claude` through the `~/.local/bin` symlink, and orch pins 2.1.280. B0 must not update the CLI.
+
+### Next run
+
+1. B5a. It is cheap and fully specified, and it gives the owner the lost-backlog view today. Leave the MCP server alone. If a new tool looks needed, report what it would be instead of adding it.
+2. B0. It unblocks all of Phase B. It is a throwaway spike: no palace writes, and no sweeper code beyond what the spike needs. Record the results in this file.
+3. C0. It unblocks Phase C. Work on a copy of the newest `/data/exports/wing_user_backup_*.json` outside the container. Never write `ideas.sqlite` into the volume.
+
+A3 is a one-word owner decision. Ask it at the start of the session, and if the answer is "raise", it becomes one more commit.
 
 ## Risks
 
@@ -360,7 +405,7 @@ B2, B5 and B6 can run in parallel once A1 lands. C1 and C4 can run in parallel a
 | Wrong cluster merges. | Thresholds come from the C0 spike on real data, not a guess. The nesting step never moves or deletes members, so a wrong nest is undone by `mems ideas unnest`. The 0.05 margin stops entries flapping. Depth is capped at 3. Manual moves and unnests set `locked`, and the nightly job leaves locked rows alone. |
 | Haiku extracts things the user didn't mean as ideas. | Ideas must carry a quote that appears in a user prompt. The prompt excludes task instructions and pasted text. At most 5 per session. B0 reads 20 real sessions' output before anything is written, and B4 logs to a file for the first week. A bad capture is fixed with `mems ideas set <id> superseded`. |
 | Personal entries leak into orch. | Four layers. Haiku flags personal ideas. Repos marked `personal` in `config/repos.json` force the flag. Entries written by hand can still be personal under a code repo's `source_wing`, so the `personal` flag is the filter that matters. `scripts/tag_personal.py --ids` tags them after the fact. Personal and non-personal entries never share a cluster, and orch passes `include_personal=False` on every call. `tests/test_user_wing.py::TestOrchCallsSkipPersonal` checks that orch-style search and recent calls return no personal entries. The remaining risk is Haiku marking a personal idea as code. |
-| Event-loop blocking. The 2026-07 outage was a synchronous palace scan on the loop. | User-wing tools move off the loop with `anyio.to_thread.run_sync`. Write-time assignment is one matrix-vector product and one SQLite insert. The nightly job, backfill and rebuild run in one worker thread behind a limiter. Every Haiku call runs on the host in the sweeper. The existing watchdog keeps polling `/health`. |
+| Event-loop blocking. The 2026-07 outage was a synchronous palace scan on the loop. | Today the user-wing tools still run on the loop. `recent()`, `summary()` and `status()` each do one metadata-only user-wing read of about 75 ms. In C1, user-wing tools move off the loop with `anyio.to_thread.run_sync`. Write-time assignment is one matrix-vector product and one SQLite insert. The nightly job, backfill and rebuild run in one worker thread behind a limiter. Every Haiku call runs on the host in the sweeper. The existing watchdog keeps polling `/health`. |
 | SQLite and Chroma drift apart. | Only the container process writes `ideas.sqlite`. SQLite owns membership, and the nightly job fixes the `cluster_id` mirror and removes members whose drawers are gone. `mems doctor` reports members with no drawer, entries with no member row, mirror mismatches and the age of the last nightly run. `mems ideas rebuild` (`POST /ideas/rebuild`) wipes the SQLite file and reruns backfill from Chroma. Base statements can't be rebuilt from Chroma without Haiku, so `ideas.sqlite` joins `src/wing_user_snapshot.py`'s daily snapshot. |
 | A resumed session double-counts ideas. | Only prompts after the last processed uuid are used for ideas. |
 | Old junk skews clusters. | Backfill runs only after the repair script (A2). |
@@ -374,10 +419,16 @@ B2, B5 and B6 can run in parallel once A1 lands. C1 and C4 can run in parallel a
 
 ## Decisions for the user
 
-Each item has a default that applies if nobody answers.
+Each item has a default, and the default stands. These were shown to the owner on 2026-10-02 and none were overridden. The open question for A3 is on the status board.
 
 1. Restating a parked or done idea. Default: a `parked` idea goes back to `open`. A `done` idea stays `done` and only gets its `seen_count` bumped.
 2. The first-week dry run for extracted ideas (B4). Default: yes, write to a log file for one week, then switch to the palace after the user reads the log.
 3. Which halls are clustered. Default: all six, so a frustration and a goal about the same thing land together.
 4. The orch `answers.md` cap. Default: 2,000 characters, one entry per request.
 5. The weekly stale review. Default: `mems ideas stale` plus the count in `mems standup`, with no extra reminder at session start.
+
+## Session log
+
+Newest first. Older entries move to the history file.
+
+- 2026-10-02: shipped A1 and A2, merged to main as a fast-forward at eda101c (no remote, so no PRs), with the container redeployed twice. Also shipped the personal audit (18 entries tagged), the summary readability fix, `tag_personal.py --ids`, and the orch-call test. Filed A3, A4, B5a, B5b and M1, and narrowed B2. Next: B5a, B0, C0, and ask A3.
