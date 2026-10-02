@@ -82,7 +82,7 @@ Results are ranked by `effective_distance = distance + recency_weight * min(age_
 
 ### Summary and status
 
-- `summary(source_wing)` returns the newest 3 entries per hall. It excludes personal entries, caps each item at 300 characters, and starts with an "Open ideas" section.
+- `summary(source_wing)` starts with up to 4 open ideas, then the newest 2 goals, decisions, frustrations and discoveries, and the newest question and observation. It excludes personal entries and cuts each item at 220 characters. When the text passes about 2,400 characters it drops whole items from the end, observations first.
 - `status().recent_topics` returns the topics of the 30 newest entries, newest first.
 
 ### Repair and CLI

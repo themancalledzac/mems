@@ -151,7 +151,7 @@ def create_server(
     @mcp.tool()
     def mempalace_user_summary(
         source_wing: str | None = None,
-        max_item_chars: int = 300,
+        max_item_chars: int = 220,
     ) -> dict:
         """Compact user context for agent wake-up: open ideas, then the newest entries per hall."""
         return user_wing.summary(source_wing=source_wing, max_item_chars=max_item_chars)

@@ -550,7 +550,7 @@ class TestSetStatus:
 
 
 class TestSummaryRecency:
-    def test_summary_shows_three_newest_per_hall(self, tmp_palace):
+    def test_summary_shows_two_newest_decisions(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
         _put(wing, "decision oldest", hall="decisions", days_ago=40)
         _put(wing, "decision newer", hall="decisions", days_ago=3)
@@ -558,8 +558,25 @@ class TestSummaryRecency:
         _put(wing, "decision touched", hall="decisions", days_ago=50, last_seen=_iso_days_ago(2))
         text = wing.summary()["text"]
         assert "decision oldest" not in text
+        assert "decision newer" not in text
         assert text.index("decision newest") < text.index("decision touched")
-        assert text.index("decision touched") < text.index("decision newer")
+
+    def test_summary_items_per_section(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        for hall in sorted(VALID_HALLS):
+            for i in range(6):
+                _put(wing, f"{hall} {i}", hall=hall, days_ago=i)
+        lines = wing.summary()["text"].splitlines()[1:]
+        counts = {line.split(":**")[0].strip("*"): line.count(";") + 1 for line in lines}
+        assert counts == {
+            "Open ideas": 4,
+            "Goals": 2,
+            "Recent decisions": 2,
+            "Active frustrations": 2,
+            "Recent discoveries": 2,
+            "Recent questions": 1,
+            "Observations": 1,
+        }
 
     def test_summary_excludes_personal(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
@@ -593,15 +610,29 @@ class TestSummaryRecency:
         assert "unscoped decision" in text
         assert "beta decision" not in text
 
-    def test_summary_truncates_items_and_caps_total(self, tmp_palace):
+    def test_summary_drops_whole_items_from_the_end(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
         for hall in sorted(VALID_HALLS):
             for i in range(4):
                 _put(wing, f"{hall} {i} " + "x" * 900, hall=hall, days_ago=i)
         result = wing.summary()
-        assert len(result["text"]) <= 2000
-        assert "..." in result["text"]
-        assert result["token_estimate"] == len(result["text"]) // 4
+        text = result["text"]
+        assert len(text) <= 2400
+        assert "**Observations:**" not in text
+        assert "**Recent questions:**" not in text
+        assert "**Open ideas:**" in text
+        assert "**Goals:**" in text
+        for line in text.splitlines()[1:]:
+            for item in line.split(":** ", 1)[1].split("; "):
+                assert len(item) == 223
+        assert result["token_estimate"] == len(text) // 4
+
+    def test_summary_item_truncation_defaults_to_220(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "y" * 500, hall="decisions")
+        text = wing.summary()["text"]
+        assert ("y" * 220 + "...") in text
+        assert ("y" * 221) not in text
 
     def test_summary_item_truncation_uses_max_item_chars(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))

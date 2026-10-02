@@ -137,6 +137,12 @@ class TestToolSchemas:
             "status",
         }
 
+    def test_user_summary_item_chars_defaults_to_220(self, tmp_palace, tmp_config):
+        server = create_server(palace_path=str(tmp_palace), config_path=str(tmp_config))
+        tools = {t.name: t for t in server._tool_manager.list_tools()}
+        props = tools["mempalace_user_summary"].parameters["properties"]
+        assert props["max_item_chars"]["default"] == 220
+
     def test_memory_sync_has_optional_wing(self, tmp_palace, tmp_config):
         """memory_sync should have optional wing param."""
         server = create_server(

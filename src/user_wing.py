@@ -27,10 +27,17 @@ MAX_REVISIONS = 3
 REVISION_MARKER = re.compile(r"\n\n\[revised \d{4}-\d{2}-\d{2}\] ")
 SECONDS_PER_DAY = 86_400.0
 RECENCY_HORIZON_DAYS = 30.0
-SUMMARY_CHAR_BUDGET = 2000
-SUMMARY_MIN_ITEM_CHARS = 40
-SUMMARY_PER_HALL = 3
-SUMMARY_OPEN_IDEAS = 5
+SUMMARY_CHAR_BUDGET = 2400
+SUMMARY_ITEM_CHARS = 220
+SUMMARY_OPEN_IDEAS = 4
+SUMMARY_HALL_ITEMS = {
+    "goals": 2,
+    "decisions": 2,
+    "frustrations": 2,
+    "discoveries": 2,
+    "questions": 1,
+    "observations": 1,
+}
 STATUS_TOPIC_WINDOW = 30
 HALL_LABELS = {
     "goals": "Goals",
@@ -106,6 +113,12 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "..."
+
+
+def _render_summary(items: list[tuple[str, list[str]]]) -> str:
+    lines = ["## User Context"]
+    lines.extend(f"**{label}:** " + "; ".join(texts) for label, texts in items)
+    return "\n".join(lines)
 
 
 def _format_entry(drawer_id: str, document: str, meta: dict) -> dict:
@@ -374,11 +387,14 @@ class UserWing:
         self.collection.update(ids=[drawer_id], metadatas=[{"status": status}])
         return {"status": "updated", "id": drawer_id, "entry_status": status}
 
-    def summary(self, source_wing: str | None = None, max_item_chars: int = 300) -> dict:
+    def summary(
+        self, source_wing: str | None = None, max_item_chars: int = SUMMARY_ITEM_CHARS
+    ) -> dict:
         """Compact user context: open goals and questions first, then the newest entries per hall.
 
-        Personal entries are always excluded. Items are cut to `max_item_chars`, and cut harder
-        until the text fits SUMMARY_CHAR_BUDGET.
+        Personal entries are always excluded and each item is cut to `max_item_chars`. Whole
+        items are dropped from the end, observations first, until the text fits
+        SUMMARY_CHAR_BUDGET.
         """
         entries = [
             (drawer_id, meta)
@@ -396,26 +412,21 @@ class UserWing:
         ][:SUMMARY_OPEN_IDEAS]
         sections = [("Open ideas", open_ideas)] if open_ideas else []
         for hall, label in HALL_LABELS.items():
-            newest = [d for d, meta in entries if meta.get("hall") == hall][:SUMMARY_PER_HALL]
+            newest = [d for d, meta in entries if meta.get("hall") == hall]
             if newest:
-                sections.append((label, newest))
+                sections.append((label, newest[: SUMMARY_HALL_ITEMS[hall]]))
 
         documents = self._documents(sorted({d for _, ids in sections for d in ids}))
-        items = [
-            (label, [" ".join(documents.get(d, "").split()) for d in ids])
-            for label, ids in sections
-        ]
-
-        limit = max_item_chars
-        while True:
-            lines = ["## User Context"]
-            for label, texts in items:
-                lines.append(f"**{label}:** " + "; ".join(_truncate(t, limit) for t in texts))
-            text = "\n".join(lines)
-            if len(text) <= SUMMARY_CHAR_BUDGET or limit <= SUMMARY_MIN_ITEM_CHARS:
-                break
-            limit = max(limit // 2, SUMMARY_MIN_ITEM_CHARS)
-        text = _truncate(text, SUMMARY_CHAR_BUDGET - 3)
+        items = []
+        for label, ids in sections:
+            texts = [" ".join(documents.get(d, "").split()) for d in ids]
+            items.append((label, [_truncate(t, max_item_chars) for t in texts]))
+        text = _render_summary(items)
+        while len(text) > SUMMARY_CHAR_BUDGET and items:
+            items[-1][1].pop()
+            if not items[-1][1]:
+                items.pop()
+            text = _render_summary(items)
         return {"text": text, "token_estimate": len(text) // 4}
 
     def status(self) -> dict:
