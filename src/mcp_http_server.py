@@ -50,7 +50,12 @@ def create_server(
     palace_path: str | None = None,
     config_path: str | None = None,
 ) -> FastMCP:
-    """Create and configure the FastMCP server with all tools."""
+    """Create and configure the FastMCP server with all tools.
+
+    Tools are registered by hand, so new upstream tools never appear on their own.
+    Upstream tool_mine, tool_list_hallways and tool_delete_hallway are left out on purpose:
+    syncing goes through memory_sync, and cross-wing links use tunnels.
+    """
     palace_path = palace_path or palace_path_default()
     config_path = config_path or config_path_default()
 
@@ -62,24 +67,30 @@ def create_server(
 
     user_wing = UserWing(palace_path=palace_path)
 
-    # --- User Wing tools (6) ---
-
     @mcp.tool()
     def mempalace_user_write(
         hall: str,
         content: str,
         topic: str,
         source_wing: str | None = None,
+        origin: str = "agent",
+        status: str | None = None,
+        personal: bool = False,
     ) -> dict:
-        """File a user thought into a hall. Deduplicates near-identical entries.
+        """File a user thought into a hall. A near-duplicate keeps its text and gains a revision.
 
         Halls: questions, discoveries, frustrations, goals, decisions, observations.
+        origin: agent|prompt|orch. status: open|active|parked|done|superseded (goals and
+        questions default to open).
         """
         return user_wing.write(
             hall=hall,
             content=content,
             topic=topic,
             source_wing=source_wing,
+            origin=origin,
+            status=status,
+            personal=personal,
         )
 
     @mcp.tool()
@@ -88,19 +99,60 @@ def create_server(
         hall: str | None = None,
         topic: str | None = None,
         n_results: int = 10,
+        since_days: float | None = None,
+        source_wing: str | None = None,
+        include_unscoped: bool = True,
+        status: str | None = None,
+        include_personal: bool = True,
+        recency_weight: float = 0.1,
     ) -> dict:
-        """Semantic search across the User Wing."""
+        """Semantic search across the User Wing, re-ranked so recently touched entries win ties."""
         return user_wing.search(
             query=query,
             hall=hall,
             topic=topic,
             n_results=n_results,
+            since_days=since_days,
+            source_wing=source_wing,
+            include_unscoped=include_unscoped,
+            status=status,
+            include_personal=include_personal,
+            recency_weight=recency_weight,
         )
 
     @mcp.tool()
-    def mempalace_user_summary() -> dict:
-        """Synthesize compact user context for agent wake-up (~300-500 tokens)."""
-        return user_wing.summary()
+    def mempalace_user_recent(
+        days: float = 7,
+        source_wing: str | None = None,
+        include_unscoped: bool = True,
+        hall: str | None = None,
+        status: str | None = None,
+        include_personal: bool = True,
+        n: int = 20,
+    ) -> dict:
+        """User Wing entries touched in the last `days`, newest first."""
+        return user_wing.recent(
+            days=days,
+            source_wing=source_wing,
+            include_unscoped=include_unscoped,
+            hall=hall,
+            status=status,
+            include_personal=include_personal,
+            n=n,
+        )
+
+    @mcp.tool()
+    def mempalace_user_set_status(drawer_id: str, status: str) -> dict:
+        """Set a User Wing entry's status: open|active|parked|done|superseded."""
+        return user_wing.set_status(drawer_id=drawer_id, status=status)
+
+    @mcp.tool()
+    def mempalace_user_summary(
+        source_wing: str | None = None,
+        max_item_chars: int = 300,
+    ) -> dict:
+        """Compact user context for agent wake-up: open ideas, then the newest entries per hall."""
+        return user_wing.summary(source_wing=source_wing, max_item_chars=max_item_chars)
 
     @mcp.tool()
     def mempalace_user_status() -> dict:
@@ -135,8 +187,6 @@ def create_server(
             dry_run=dry_run,
         )
 
-    # --- Sync tools (2) ---
-
     @mcp.tool()
     def memory_sync(
         wing: str | None = None,
@@ -157,8 +207,6 @@ def create_server(
             config_path=config_path,
             data_path=palace_path,
         )
-
-    # --- Navigation tools (5) ---
 
     @mcp.tool()
     def mempalace_status() -> dict:
@@ -185,8 +233,6 @@ def create_server(
         """Return the N most recently timestamped drawers (newest first)."""
         return handle_get_logs_recent(palace_path, n=n)
 
-    # --- Search tools (2) ---
-
     @mcp.tool()
     def mempalace_search(
         query: str,
@@ -210,8 +256,6 @@ def create_server(
         """Unfiltered semantic search across every wing."""
         return handle_search_all(palace_path, query=query, n=n)
 
-    # --- Ops (1) ---
-
     @mcp.tool()
     def mempalace_resync(
         full_refresh: bool = False,
@@ -225,17 +269,10 @@ def create_server(
             output_dir=output_dir,
         )
 
-    # --- Wing sharing (1) ---
-
     @mcp.tool()
     def mempalace_export_wing(slug: str) -> dict:
         """Export a wing as a portable .wingpack bundle."""
         return handle_export_wing(palace_path, slug=slug)
-
-    # --- Phase 4B: KG tools (4) ---
-    # Note: upstream mempalace.mcp_server binds `_kg` to a palace path at
-    # import time. These tools work correctly in the container (one fixed
-    # palace) but cannot be retargeted per-call in tests.
 
     @mcp.tool()
     def mempalace_kg_query(
@@ -250,7 +287,7 @@ def create_server(
     def mempalace_kg_add(
         subject: str,
         predicate: str,
-        object: str,  # noqa: A002 — matches upstream signature
+        object: str,
         valid_from: str | None = None,
         source_closet: str | None = None,
     ) -> dict:
@@ -274,11 +311,6 @@ def create_server(
         """Knowledge graph overview: entities, triples, relation types."""
         return handle_kg_stats(palace_path)
 
-    # TODO: mempalace_kg_time_kv — no upstream tool_kg_time_kv; skipped.
-    # See Phase 4B report.
-
-    # --- Phase 4B: Graph traversal (2) ---
-
     @mcp.tool()
     def mempalace_traverse(start_room: str, max_hops: int = 2) -> dict:
         """Walk the palace graph from a starting room."""
@@ -291,8 +323,6 @@ def create_server(
     ) -> dict:
         """Find rooms that bridge two wings."""
         return handle_find_tunnels(palace_path, wing_a=wing_a, wing_b=wing_b)
-
-    # --- Phase 4B: Drawer ops (3) ---
 
     @mcp.tool()
     def mempalace_list_drawers(
@@ -331,11 +361,6 @@ def create_server(
         """Delete a single drawer by ID."""
         return handle_delete_drawer(palace_path, drawer_id=drawer_id)
 
-    # TODO: mempalace_kg_drawer — plan item has no upstream analog and no
-    # clear semantics distinct from kg_add; skipped. See Phase 4B report.
-
-    # --- Phase 4B: Tunnels (4) ---
-
     @mcp.tool()
     def mempalace_create_tunnel(
         source_wing: str,
@@ -373,10 +398,6 @@ def create_server(
         """Follow tunnels from a room to see connected drawers in other wings."""
         return handle_tunnel_read(palace_path, wing=wing, room=room)
 
-    # --- Phase 4B: Diary (2) ---
-    # diary_read_time in plan has no upstream analog (tool_diary_read takes
-    # last_n, not a time range). Skipped.
-
     @mcp.tool()
     def mempalace_diary_write(
         agent_name: str,
@@ -402,18 +423,6 @@ def create_server(
             last_n=last_n,
             wing=wing,
         )
-
-    # TODO: mempalace_diary_read_time — no upstream tool takes a time window
-    # for diary reads (only last_n); skipped. See Phase 4B report.
-
-    # --- Intentionally NOT registered (upstream v3.4.x additions) ---
-    # Tools are hand-registered above rather than iterated from upstream's TOOLS
-    # dict, so new upstream tools never auto-expose. These three are deliberately
-    # omitted because they don't fit the wrapper's model:
-    #   * tool_mine — raw filesystem mining; bypasses our SyncEngine git-diff
-    #     orchestration (clients should use memory_sync instead).
-    #   * tool_list_hallways / tool_delete_hallway — upstream "hallway" records;
-    #     the wrapper links knowledge via tunnels + the halls/rooms taxonomy.
 
     return mcp
 
