@@ -31,8 +31,6 @@ from mems_cli.commands.my import (
 )
 from tests.conftest import argparse_namespace_for
 
-# --- fake palace client -------------------------------------------------------
-
 
 class _FakePalaceClient:
     """Drop-in for PalaceClient. Records calls; returns a canned value."""
@@ -57,8 +55,6 @@ class _FakePalaceClient:
 
 def _install_fake(monkeypatch, return_value=None):
     """Patch `my.PalaceClient` with a fake. Returns the factory."""
-    # `last_instance` is class-level and leaks across tests; reset it so each
-    # test observes only its own client instantiations.
     _FakePalaceClient.last_instance = None
 
     class _Factory(_FakePalaceClient):
@@ -71,9 +67,6 @@ def _install_fake(monkeypatch, return_value=None):
     return _Factory
 
 
-# --- hall search subcommands --------------------------------------------------
-
-# Map each importable handler to the hall name it should query.
 _HALL_HANDLERS = {
     "questions": cmd_my_questions,
     "discoveries": cmd_my_discoveries,
@@ -122,7 +115,6 @@ def test_my_hall_calls_user_search_with_correct_args(hall, handler, monkeypatch,
 def test_my_hall_empty_query_defaults_to_blank(monkeypatch, capsys):
     _install_fake(monkeypatch, return_value={"structuredContent": {"results": []}})
 
-    # `query` absent entirely -> handler should fall back to "".
     ns = argparse_namespace_for(as_json=False)
     assert cmd_my_questions(ns) == EXIT_OK
 
@@ -130,7 +122,7 @@ def test_my_hall_empty_query_defaults_to_blank(monkeypatch, capsys):
     assert tool == "mempalace_user_search"
     assert payload["query"] == ""
     assert payload["hall"] == "questions"
-    assert payload["n_results"] == 10  # default limit
+    assert payload["n_results"] == 10
 
     out = capsys.readouterr().out
     assert "no matching thoughts" in out
@@ -160,36 +152,53 @@ def test_my_hall_accepts_bare_list_payload(monkeypatch, capsys):
     assert "lt" in out
 
 
-# --- recent (user summary) ----------------------------------------------------
-
-
-def test_my_recent_calls_user_summary_and_prints_text(monkeypatch, capsys):
+def test_my_recent_calls_user_recent_and_prints_table(monkeypatch, capsys):
     _install_fake(
         monkeypatch,
-        return_value={"structuredContent": {"text": "## User Context\nGoals: ship mems"}},
+        return_value={
+            "structuredContent": {
+                "days": 3,
+                "results": [
+                    {
+                        "content": "ship mems recency",
+                        "topic": "mems",
+                        "timestamp": "2026-04-01T00:00:00+00:00",
+                        "last_seen": "2026-09-30T00:00:00+00:00",
+                    }
+                ],
+            }
+        },
     )
 
-    ns = argparse_namespace_for(as_json=False)
+    ns = argparse_namespace_for(as_json=False, days=3, limit=5)
     assert cmd_my_recent(ns) == EXIT_OK
 
     calls = _FakePalaceClient.last_instance.calls
-    assert calls[0][0] == "mempalace_user_summary"
-    assert calls[0][1] == {}
+    assert calls == [("mempalace_user_recent", {"days": 3, "n": 5})]
 
     out = capsys.readouterr().out
-    assert "User Context" in out
-    assert "ship mems" in out
+    assert "topic" in out
+    assert "ship mems recency" in out
+    assert "2026-09-30" in out
+    assert "2026-04-01" not in out
+
+
+def test_my_recent_defaults(monkeypatch, capsys):
+    _install_fake(monkeypatch, return_value={"structuredContent": {"days": 7, "results": []}})
+    assert cmd_my_recent(argparse_namespace_for(as_json=False)) == EXIT_OK
+    assert _FakePalaceClient.last_instance.calls == [
+        ("mempalace_user_recent", {"days": 7, "n": 20})
+    ]
+    assert "no matching thoughts" in capsys.readouterr().out
 
 
 def test_my_recent_json_flag(monkeypatch, capsys):
-    _install_fake(monkeypatch, return_value={"structuredContent": {"text": "hello"}})
+    payload = {"days": 7, "results": [{"content": "hello"}]}
+    _install_fake(monkeypatch, return_value={"structuredContent": payload})
     ns = argparse_namespace_for(as_json=True)
     assert cmd_my_recent(ns) == EXIT_OK
     out = capsys.readouterr().out
-    assert json.loads(out) == {"text": "hello"}
-
-
-# --- note (user write) --------------------------------------------------------
+    assert json.loads(out) == payload
 
 
 def test_my_note_writes_to_user_wing(monkeypatch, capsys):
@@ -234,11 +243,7 @@ def test_my_note_rejects_bad_hall(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "hall must be one of" in err
     assert "bogus" in err
-    # Must NOT have hit the server with an invalid hall.
     assert factory.last_instance is None or factory.last_instance.calls == []
-
-
-# --- server-error path --------------------------------------------------------
 
 
 def test_server_error_returns_exit_server_error(monkeypatch, capsys):
@@ -263,23 +268,21 @@ def test_server_error_returns_exit_server_error(monkeypatch, capsys):
     assert "connection refused" in err
 
 
-# --- register() wiring --------------------------------------------------------
-
-
 def test_register_wires_my_subparser_and_actions():
     parser = argparse.ArgumentParser(prog="mems")
     subparsers = parser.add_subparsers(dest="command")
     register(subparsers)
 
-    # Every hall + recent + note must parse and bind a callable `func`.
     for hall in VALID_HALLS:
         ns = parser.parse_args(["my", hall, "some query"])
         assert callable(ns.func)
         assert ns.hall == hall
         assert ns.query == "some query"
 
-    ns = parser.parse_args(["my", "recent"])
+    ns = parser.parse_args(["my", "recent", "--days", "3", "-n", "5"])
     assert callable(ns.func)
+    assert ns.days == 3
+    assert ns.limit == 5
 
     ns = parser.parse_args(["my", "note", "a thought", "--hall", "goals", "--topic", "x"])
     assert callable(ns.func)
