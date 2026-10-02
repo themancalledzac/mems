@@ -1,7 +1,8 @@
 """Strip leaked tool-call markup from User Wing entries.
 
 Run inside the container: `python repair_user_wing.py [--apply]`. It is a dry run unless
-`--apply` is passed. A leaked `<parameter name="source_wing">X` fills in a missing source_wing.
+`--apply` is passed. A leaked `<parameter name="source_wing">X` or `<source_wing>X` tag fills
+in a missing source_wing.
 """
 
 import argparse
@@ -10,7 +11,7 @@ import re
 import sys
 
 MARKUP_MARKERS = ("</content>", "<parameter", "</parameter>", "<invoke")
-SOURCE_WING_TAG = re.compile(r'<parameter name="source_wing">\s*([^<\s]+)')
+SOURCE_WING_TAG = re.compile(r'<(?:parameter name="source_wing"|source_wing)>\s*([^<\s]+)')
 SAMPLE_LIMIT = 5
 SAMPLE_CHARS = 160
 

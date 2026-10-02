@@ -70,6 +70,19 @@ def test_plan_finds_and_strips_leaks(repair):
     assert plan["scanned"] == 4
 
 
+def test_plan_reads_bare_source_wing_tag(repair):
+    rows = [
+        (
+            "user-bare",
+            "Thought.</content>\n<source_wing>edens-zac-backend</source_wing>\n</invoke>",
+            {"wing": "user"},
+        )
+    ]
+    plan = repair.plan_repairs(FakeCollection(rows))
+    assert plan["repairs"][0]["after"] == "Thought."
+    assert plan["repairs"][0]["metadata_updates"] == {"source_wing": "edens-zac-backend"}
+
+
 def test_dry_run_writes_nothing(repair, capsys):
     collection = FakeCollection(_rows())
     summary = repair.run(collection, apply=False)
