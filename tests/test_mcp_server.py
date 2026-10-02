@@ -172,3 +172,54 @@ class TestHealthRoute:
         app = server.streamable_http_app()
         paths = {getattr(r, "path", None) for r in app.routes}
         assert "/health" in paths
+
+    def test_health_is_cheap_liveness_only(self, tmp_palace, tmp_config, monkeypatch):
+        """/health must be O(1) liveness and must NOT scan the palace.
+
+        Regression guard for the 2026-07 incident: /health used to call
+        handle_list_wings() inline, scanning every drawer on the event loop, so
+        a slow palace crossed the 5s healthcheck timeout and — with PID 1 not
+        reaping the SIGKILLed curl — leaked a zombie per probe until the server
+        wedged. /health must answer without ever touching handle_list_wings.
+        """
+        import asyncio
+
+        from src import mcp_http_server
+
+        def _boom(*_args, **_kwargs):
+            raise AssertionError("/health must not call handle_list_wings")
+
+        monkeypatch.setattr(mcp_http_server, "handle_list_wings", _boom)
+
+        server = create_server(
+            palace_path=str(tmp_palace),
+            config_path=str(tmp_config),
+        )
+        mcp_http_server._attach_health_route(server, palace_path=str(tmp_palace))
+        routes = {
+            getattr(r, "path", None): r for r in server.streamable_http_app().routes
+        }
+        assert "/health" in routes
+        assert "/health/deep" in routes
+
+        resp = asyncio.run(routes["/health"].endpoint(None))
+        assert resp.status_code == 200
+
+    def test_health_deep_returns_wing_summary(self, tmp_palace, tmp_config):
+        """/health/deep still exposes the wing summary (offloaded to a thread)."""
+        import asyncio
+        import json
+
+        from src import mcp_http_server
+
+        server = create_server(
+            palace_path=str(tmp_palace),
+            config_path=str(tmp_config),
+        )
+        mcp_http_server._attach_health_route(server, palace_path=str(tmp_palace))
+        routes = {
+            getattr(r, "path", None): r for r in server.streamable_http_app().routes
+        }
+        resp = asyncio.run(routes["/health/deep"].endpoint(None))
+        assert resp.status_code == 200
+        assert "wings" in json.loads(resp.body)
