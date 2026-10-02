@@ -9,11 +9,11 @@ lookups read like sentences:
     mems my goals [QUERY]
     mems my decisions [QUERY]
     mems my observations [QUERY]
-    mems my recent                   # synthesized user-context summary
+    mems my recent [--days N] [-n N] # entries touched recently, newest first
     mems my note "<text>" --hall <hall> --topic <topic>
 
 The six hall subcommands all map to `mempalace_user_search`; `recent`
-maps to `mempalace_user_summary`; `note` maps to `mempalace_user_write`.
+maps to `mempalace_user_recent`; `note` maps to `mempalace_user_write`.
 
 Conventions (tool call, result unwrapping, error handling, output) follow
 `mems_cli.commands.search`.
@@ -45,7 +45,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         hall_p.add_argument("--json", dest="as_json", action="store_true")
         hall_p.set_defaults(func=_make_hall_handler(hall), hall=hall)
 
-    recent_p = my_sub.add_parser("recent", help="Show your synthesized user context.")
+    recent_p = my_sub.add_parser(
+        "recent", help="Show User Wing entries touched recently, newest first."
+    )
+    recent_p.add_argument("--days", type=float, default=7)
+    recent_p.add_argument("--limit", "-n", type=int, default=20)
     recent_p.add_argument("--json", dest="as_json", action="store_true")
     recent_p.set_defaults(func=cmd_my_recent)
 
@@ -65,9 +69,6 @@ def _no_action(args: argparse.Namespace) -> int:
     return EXIT_USER_ERROR
 
 
-# --- palace plumbing ----------------------------------------------------------
-
-
 def _call(tool: str, args: dict | None = None):
     """Call an MCP tool; return (payload, exit_code). Mirrors search._call."""
     try:
@@ -77,9 +78,6 @@ def _call(tool: str, args: dict | None = None):
         print(f"server error: {exc}", file=sys.stderr)
         return None, EXIT_SERVER_ERROR
     return extract_tool_result(result), EXIT_OK
-
-
-# --- rendering ----------------------------------------------------------------
 
 
 def _hits_from(data) -> list:
@@ -98,19 +96,19 @@ def _hits_from(data) -> list:
     return []
 
 
-def _row_from_hit(hit) -> tuple:
-    """(topic, snippet, timestamp) row for one thought entry."""
+def _row_from_hit(hit, time_key: str = "timestamp") -> tuple:
+    """(topic, snippet, time) row for one thought entry, falling back to `timestamp`."""
     if not isinstance(hit, dict):
         return ("?", str(hit)[:120].replace("\n", " "), "-")
     meta = hit.get("metadata") or {}
     topic = hit.get("topic") or meta.get("topic") or "-"
-    timestamp = hit.get("timestamp") or meta.get("timestamp") or "-"
+    timestamp = hit.get(time_key) or hit.get("timestamp") or meta.get("timestamp") or "-"
     content = (hit.get("document") or hit.get("content") or hit.get("text") or "").strip()
     snippet = content[:120].replace("\n", " ")
     return (str(topic), snippet, str(timestamp))
 
 
-def _print_hall_results(data, as_json: bool) -> None:
+def _print_hall_results(data, as_json: bool, time_key: str = "timestamp") -> None:
     if as_json:
         print_json(data)
         return
@@ -118,11 +116,8 @@ def _print_hall_results(data, as_json: bool) -> None:
     if not hits:
         print("(no matching thoughts)")
         return
-    rows = [_row_from_hit(h) for h in hits]
+    rows = [_row_from_hit(h, time_key) for h in hits]
     print_table(rows, headers=("topic", "snippet", "timestamp"))
-
-
-# --- handlers -----------------------------------------------------------------
 
 
 def _make_hall_handler(hall: str):
@@ -145,7 +140,6 @@ def _make_hall_handler(hall: str):
     return handler
 
 
-# Explicit, importable handlers (one per hall) for direct unit testing.
 cmd_my_questions = _make_hall_handler("questions")
 cmd_my_discoveries = _make_hall_handler("discoveries")
 cmd_my_frustrations = _make_hall_handler("frustrations")
@@ -155,17 +149,12 @@ cmd_my_observations = _make_hall_handler("observations")
 
 
 def cmd_my_recent(args: argparse.Namespace) -> int:
-    data, code = _call("mempalace_user_summary")
+    """Table of entries touched in the last `--days`, with the time column showing last_seen."""
+    payload = {"days": getattr(args, "days", 7), "n": getattr(args, "limit", 20)}
+    data, code = _call("mempalace_user_recent", payload)
     if code != EXIT_OK:
         return code
-    if getattr(args, "as_json", False):
-        print_json(data)
-        return EXIT_OK
-    text = (data or {}).get("text") if isinstance(data, dict) else None
-    if text:
-        print(text)
-    else:
-        print_json(data)
+    _print_hall_results(data, getattr(args, "as_json", False), time_key="last_seen")
     return EXIT_OK
 
 
