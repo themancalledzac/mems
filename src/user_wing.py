@@ -1,5 +1,6 @@
 """User Wing — persistent user context organized by thought type."""
 
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -15,8 +16,137 @@ VALID_HALLS = frozenset(
         "observations",
     }
 )
+VALID_ORIGINS = frozenset({"agent", "prompt", "orch"})
+VALID_STATUSES = frozenset({"open", "active", "parked", "done", "superseded"})
+OPEN_BY_DEFAULT_HALLS = frozenset({"goals", "questions"})
+MALFORMED_MARKERS = ("<parameter", "</parameter>", "</content>", "<invoke")
 
 DEDUP_THRESHOLD = 0.15
+MAX_REVISIONS = 3
+REVISION_MARKER = re.compile(r"\n\n\[revised \d{4}-\d{2}-\d{2}\] ")
+SECONDS_PER_DAY = 86_400.0
+RECENCY_HORIZON_DAYS = 30.0
+SUMMARY_CHAR_BUDGET = 2000
+SUMMARY_MIN_ITEM_CHARS = 40
+SUMMARY_PER_HALL = 3
+SUMMARY_OPEN_IDEAS = 5
+STATUS_TOPIC_WINDOW = 30
+HALL_LABELS = {
+    "goals": "Goals",
+    "decisions": "Recent decisions",
+    "frustrations": "Active frustrations",
+    "discoveries": "Recent discoveries",
+    "questions": "Recent questions",
+    "observations": "Observations",
+}
+
+
+def _invalid(kind: str, value, allowed: frozenset) -> dict:
+    return {
+        "status": "error",
+        "message": f"Invalid {kind}: {value}. Must be one of: {', '.join(sorted(allowed))}",
+    }
+
+
+def _parse_iso_epoch(value) -> float | None:
+    """Parse an ISO timestamp to epoch seconds, treating naive values as UTC."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def _last_seen_epoch(meta: dict) -> float:
+    """Epoch of the last touch, falling back to `timestamp` for pre-recency entries."""
+    epoch = meta.get("last_seen_epoch")
+    if isinstance(epoch, (int, float)) and not isinstance(epoch, bool):
+        return float(epoch)
+    for key in ("last_seen", "timestamp"):
+        parsed = _parse_iso_epoch(meta.get(key))
+        if parsed is not None:
+            return parsed
+    return 0.0
+
+
+def _effective_status(meta: dict) -> str | None:
+    """Stored status, or `open` for a goals/questions entry that has none."""
+    status = meta.get("status")
+    if status:
+        return status
+    return "open" if meta.get("hall") in OPEN_BY_DEFAULT_HALLS else None
+
+
+def _merge_revision(document: str, new_content: str, day: str) -> str:
+    """Append `[revised <day>] <new_content>` unless it repeats the original or a revision.
+
+    Only the newest MAX_REVISIONS revision lines are kept.
+    """
+    markers = list(REVISION_MARKER.finditer(document))
+    base = document[: markers[0].start()] if markers else document
+    bounds = [m.start() for m in markers[1:]] + [len(document)]
+    revisions = [document[m.start() : end] for m, end in zip(markers, bounds)]
+    seen = {base} | {document[m.end() : end] for m, end in zip(markers, bounds)}
+    if new_content in seen:
+        return document
+    revisions.append(f"\n\n[revised {day}] {new_content}")
+    return base + "".join(revisions[-MAX_REVISIONS:])
+
+
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _format_entry(drawer_id: str, document: str, meta: dict) -> dict:
+    """Shared result shape for search and recent; absent recency keys get their defaults."""
+    return {
+        "id": drawer_id,
+        "content": document,
+        "hall": meta.get("hall", ""),
+        "topic": meta.get("topic", ""),
+        "source_wing": meta.get("source_wing"),
+        "timestamp": meta.get("timestamp", ""),
+        "last_seen": meta.get("last_seen") or meta.get("timestamp", ""),
+        "seen_count": int(meta.get("seen_count", 1)),
+        "status": meta.get("status"),
+        "origin": meta.get("origin", "agent"),
+        "personal": bool(meta.get("personal", False)),
+    }
+
+
+def _keep(
+    meta: dict,
+    *,
+    since_epoch: float | None = None,
+    source_wing: str | None = None,
+    include_unscoped: bool = True,
+    status: str | None = None,
+    include_personal: bool = True,
+) -> bool:
+    """Apply the recency, wing-scope, status and personal filters to one entry."""
+    if since_epoch is not None and _last_seen_epoch(meta) < since_epoch:
+        return False
+    if source_wing is not None:
+        entry_wing = meta.get("source_wing")
+        if entry_wing != source_wing and not (include_unscoped and not entry_wing):
+            return False
+    if status is not None and _effective_status(meta) != status:
+        return False
+    if not include_personal and meta.get("personal", False):
+        return False
+    return True
+
+
+def _since_epoch(days: float | None) -> float | None:
+    if days is None:
+        return None
+    return datetime.now(timezone.utc).timestamp() - days * SECONDS_PER_DAY
 
 
 class UserWing:
@@ -36,38 +166,48 @@ class UserWing:
         source_wing: str | None = None,
         session_id: str | None = None,
         confidence: float = 0.9,
+        origin: str = "agent",
+        status: str | None = None,
+        personal: bool = False,
     ) -> dict:
-        """File a thought into a hall. Deduplicates against recent entries."""
-        if hall not in VALID_HALLS:
-            return {
-                "status": "error",
-                "message": f"Invalid hall: {hall}. Must be one of: {', '.join(sorted(VALID_HALLS))}",
-            }
+        """File a thought into a hall, or record a repeat of a near-duplicate in the same hall.
 
-        # Check for near-duplicate in same hall
+        A repeat keeps the original text and metadata, bumps `seen_count` and `last_seen`,
+        and appends the new phrasing as a revision line.
+        """
+        if hall not in VALID_HALLS:
+            return _invalid("hall", hall, VALID_HALLS)
+        if any(marker in content for marker in MALFORMED_MARKERS):
+            return {"status": "error", "message": "malformed: content contains tool-call markup"}
+        if origin not in VALID_ORIGINS:
+            return _invalid("origin", origin, VALID_ORIGINS)
+        if status is not None and status not in VALID_STATUSES:
+            return _invalid("status", status, VALID_STATUSES)
+
+        now = datetime.now(timezone.utc)
         existing = self._find_duplicate(hall, content)
         if existing:
-            self.collection.upsert(
-                ids=[existing["id"]],
-                documents=[content],
-                metadatas=[
-                    {
-                        **existing["metadata"],
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    }
-                ],
-            )
-            return {"status": "updated", "id": existing["id"], "hall": hall}
+            return self._record_repeat(existing, hall, content, source_wing, now)
 
         drawer_id = f"user-{uuid.uuid4().hex[:24]}"
+        stamp = now.isoformat()
         metadata = {
             "wing": "user",
             "hall": hall,
             "topic": topic,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": stamp,
+            "last_seen": stamp,
+            "last_seen_epoch": now.timestamp(),
+            "seen_count": 1,
+            "origin": origin,
+            "personal": personal,
             "confidence": confidence,
             "added_by": "user-wing",
         }
+        if status is None and hall in OPEN_BY_DEFAULT_HALLS:
+            status = "open"
+        if status:
+            metadata["status"] = status
         if source_wing:
             metadata["source_wing"] = source_wing
         if session_id:
@@ -80,14 +220,51 @@ class UserWing:
         )
         return {"status": "created", "id": drawer_id, "hall": hall}
 
+    def _record_repeat(
+        self,
+        existing: dict,
+        hall: str,
+        content: str,
+        source_wing: str | None,
+        now: datetime,
+    ) -> dict:
+        drawer_id = existing["id"]
+        meta = existing["metadata"]
+        seen_count = int(meta.get("seen_count", 1)) + 1
+        updates = {
+            "last_seen": now.isoformat(),
+            "last_seen_epoch": now.timestamp(),
+            "seen_count": seen_count,
+        }
+        if source_wing and not meta.get("source_wing"):
+            updates["source_wing"] = source_wing
+
+        document = existing["document"]
+        merged = _merge_revision(document, content, now.date().isoformat())
+        if merged != document:
+            self.collection.update(ids=[drawer_id], documents=[merged], metadatas=[updates])
+        else:
+            self.collection.update(ids=[drawer_id], metadatas=[updates])
+        return {"status": "updated", "id": drawer_id, "hall": hall, "seen_count": seen_count}
+
     def search(
         self,
         query: str,
         hall: str | None = None,
         topic: str | None = None,
         n_results: int = 10,
+        since_days: float | None = None,
+        source_wing: str | None = None,
+        include_unscoped: bool = True,
+        status: str | None = None,
+        include_personal: bool = True,
+        recency_weight: float = 0.1,
     ) -> dict:
-        """Semantic search across user wing."""
+        """Semantic search across the user wing, re-ranked by recency.
+
+        `effective_distance = distance + recency_weight * min(age_days / 30, 1)`, with age
+        measured from `last_seen`. Filters run in Python over an over-fetched candidate set.
+        """
         where_conditions = [{"wing": "user"}]
         if hall:
             where_conditions.append({"hall": hall})
@@ -102,7 +279,7 @@ class UserWing:
         try:
             results = self.collection.query(
                 query_texts=[query],
-                n_results=n_results,
+                n_results=min(max(n_results * 3, 30), 100),
                 where=where,
             )
         except Exception:
@@ -111,99 +288,185 @@ class UserWing:
         if not results or not results.get("ids") or not results["ids"][0]:
             return {"query": query, "results": []}
 
+        now_epoch = datetime.now(timezone.utc).timestamp()
+        since = _since_epoch(since_days)
+        metadatas = results.get("metadatas") or [[]]
+        distances = results.get("distances") or [[]]
         formatted = []
         for i, doc_id in enumerate(results["ids"][0]):
-            meta = results["metadatas"][0][i] if results.get("metadatas") else {}
-            dist = results["distances"][0][i] if results.get("distances") else None
-            formatted.append(
-                {
-                    "id": doc_id,
-                    "content": results["documents"][0][i],
-                    "hall": meta.get("hall", ""),
-                    "topic": meta.get("topic", ""),
-                    "source_wing": meta.get("source_wing"),
-                    "timestamp": meta.get("timestamp", ""),
-                    "distance": dist,
-                }
+            meta = metadatas[0][i] if i < len(metadatas[0]) else {}
+            meta = meta or {}
+            if not _keep(
+                meta,
+                since_epoch=since,
+                source_wing=source_wing,
+                include_unscoped=include_unscoped,
+                status=status,
+                include_personal=include_personal,
+            ):
+                continue
+            dist = distances[0][i] if i < len(distances[0]) else None
+            age_days = max(now_epoch - _last_seen_epoch(meta), 0.0) / SECONDS_PER_DAY
+            effective = (dist or 0.0) + recency_weight * min(age_days / RECENCY_HORIZON_DAYS, 1.0)
+            entry = _format_entry(doc_id, results["documents"][0][i], meta)
+            entry["distance"] = dist
+            entry["effective_distance"] = effective
+            formatted.append(entry)
+
+        formatted.sort(key=lambda e: (e["effective_distance"], e["id"]))
+        return {"query": query, "results": formatted[:n_results]}
+
+    def recent(
+        self,
+        days: float = 7,
+        source_wing: str | None = None,
+        include_unscoped: bool = True,
+        hall: str | None = None,
+        status: str | None = None,
+        include_personal: bool = True,
+        n: int = 20,
+    ) -> dict:
+        """Entries touched within `days`, newest `last_seen` first, in the search result shape.
+
+        Filters and sorts on metadata alone, then reads documents only for the chosen ids.
+        """
+        since = _since_epoch(days)
+        chosen = [
+            (drawer_id, meta)
+            for drawer_id, meta in self._user_metadata(hall)
+            if _keep(
+                meta,
+                since_epoch=since,
+                source_wing=source_wing,
+                include_unscoped=include_unscoped,
+                status=status,
+                include_personal=include_personal,
             )
-
-        return {"query": query, "results": formatted}
-
-    def summary(self) -> dict:
-        """Synthesize a compact user context summary (~300-500 tokens)."""
-        sections = {}
-        hall_labels = {
-            "goals": "Goals",
-            "decisions": "Recent decisions",
-            "frustrations": "Active frustrations",
-            "discoveries": "Recent discoveries",
-            "questions": "Open questions",
-            "observations": "Observations",
+        ]
+        chosen.sort(key=lambda pair: (-_last_seen_epoch(pair[1]), pair[0]))
+        chosen = chosen[:n]
+        documents = self._documents([drawer_id for drawer_id, _ in chosen])
+        return {
+            "days": days,
+            "results": [
+                _format_entry(drawer_id, documents.get(drawer_id, ""), meta)
+                for drawer_id, meta in chosen
+            ],
         }
 
-        has_content = False
-        for hall, label in hall_labels.items():
-            try:
-                results = self.collection.get(
-                    where={"$and": [{"wing": "user"}, {"hall": hall}]},
-                    limit=5,
-                )
-            except Exception:
-                continue
+    def set_status(self, drawer_id: str, status: str) -> dict:
+        """Set the status of one user entry without touching its text or other metadata."""
+        if status not in VALID_STATUSES:
+            return _invalid("status", status, VALID_STATUSES)
+        try:
+            found = self.collection.get(ids=[drawer_id], include=["metadatas"])
+        except Exception:
+            found = None
+        if not found or not found.get("ids"):
+            return {"status": "error", "message": f"Unknown drawer id: {drawer_id}"}
+        if (found.get("metadatas") or [{}])[0].get("wing") != "user":
+            return {"status": "error", "message": f"Not a user wing entry: {drawer_id}"}
+        self.collection.update(ids=[drawer_id], metadatas=[{"status": status}])
+        return {"status": "updated", "id": drawer_id, "entry_status": status}
 
-            if results and results.get("documents"):
-                items = results["documents"][:3]
-                sections[label] = "; ".join(items)
-                has_content = True
+    def summary(self, source_wing: str | None = None, max_item_chars: int = 300) -> dict:
+        """Compact user context: open goals and questions first, then the newest entries per hall.
 
-        if not has_content:
+        Personal entries are always excluded. Items are cut to `max_item_chars`, and cut harder
+        until the text fits SUMMARY_CHAR_BUDGET.
+        """
+        entries = [
+            (drawer_id, meta)
+            for drawer_id, meta in self._user_metadata()
+            if _keep(meta, source_wing=source_wing, include_personal=False)
+        ]
+        if not entries:
             return {"text": "", "token_estimate": 0}
+        entries.sort(key=lambda pair: (-_last_seen_epoch(pair[1]), pair[0]))
 
-        lines = ["## User Context"]
-        for label, content in sections.items():
-            lines.append(f"**{label}:** {content}")
+        open_ideas = [
+            drawer_id
+            for drawer_id, meta in entries
+            if meta.get("hall") in OPEN_BY_DEFAULT_HALLS and _effective_status(meta) == "open"
+        ][:SUMMARY_OPEN_IDEAS]
+        sections = [("Open ideas", open_ideas)] if open_ideas else []
+        for hall, label in HALL_LABELS.items():
+            newest = [d for d, meta in entries if meta.get("hall") == hall][:SUMMARY_PER_HALL]
+            if newest:
+                sections.append((label, newest))
 
-        text = "\n".join(lines)
-        token_estimate = len(text) // 4
-        return {"text": text, "token_estimate": token_estimate}
+        documents = self._documents(sorted({d for _, ids in sections for d in ids}))
+        items = [
+            (label, [" ".join(documents.get(d, "").split()) for d in ids])
+            for label, ids in sections
+        ]
+
+        limit = max_item_chars
+        while True:
+            lines = ["## User Context"]
+            for label, texts in items:
+                lines.append(f"**{label}:** " + "; ".join(_truncate(t, limit) for t in texts))
+            text = "\n".join(lines)
+            if len(text) <= SUMMARY_CHAR_BUDGET or limit <= SUMMARY_MIN_ITEM_CHARS:
+                break
+            limit = max(limit // 2, SUMMARY_MIN_ITEM_CHARS)
+        text = _truncate(text, SUMMARY_CHAR_BUDGET - 3)
+        return {"text": text, "token_estimate": len(text) // 4}
 
     def status(self) -> dict:
-        """Hall counts, recent topics, protocol guidance."""
-        halls = {}
-        topics = set()
-        total = 0
+        """Hall counts, the topics of the most recently touched entries, protocol guidance."""
+        entries = self._user_metadata()
+        halls: dict[str, int] = {}
+        for _, meta in entries:
+            hall = meta.get("hall")
+            if hall in VALID_HALLS:
+                halls[hall] = halls.get(hall, 0) + 1
 
-        for hall in VALID_HALLS:
-            try:
-                results = self.collection.get(
-                    where={"$and": [{"wing": "user"}, {"hall": hall}]},
-                )
-            except Exception:
-                continue
-
-            count = len(results["ids"]) if results and results.get("ids") else 0
-            if count > 0:
-                halls[hall] = count
-                total += count
-                if results.get("metadatas"):
-                    for meta in results["metadatas"][:10]:
-                        if meta.get("topic"):
-                            topics.add(meta["topic"])
+        entries.sort(key=lambda pair: (-_last_seen_epoch(pair[1]), pair[0]))
+        recent_topics: list[str] = []
+        for _, meta in entries[:STATUS_TOPIC_WINDOW]:
+            topic = meta.get("topic")
+            if topic and topic not in recent_topics:
+                recent_topics.append(topic)
 
         return {
-            "total_thoughts": total,
+            "total_thoughts": sum(halls.values()),
             "halls": halls,
-            "recent_topics": sorted(topics),
+            "recent_topics": recent_topics,
             "guidance": (
                 "Capture user thoughts continuously via mempalace_user_write — "
                 "every substantive response with a decision, discovery, goal, or "
                 "observation triggers a write BEFORE the response is delivered. "
                 "This is per-turn, not session-end. Announce writes inline "
-                "(\"Capturing X to hall Y\") so the user can see what is captured. "
+                '("Capturing X to hall Y") so the user can see what is captured. '
                 "Call mempalace_user_summary once per session, cite what is relevant, "
-                "or state \"no prior context relevant\" before proceeding."
+                'or state "no prior context relevant" before proceeding.'
             ),
         }
+
+    def _user_metadata(self, hall: str | None = None) -> list[tuple[str, dict]]:
+        """(id, metadata) for every user entry, optionally in one hall. Documents are not read."""
+        where = {"$and": [{"wing": "user"}, {"hall": hall}]} if hall else {"wing": "user"}
+        try:
+            results = self.collection.get(where=where, include=["metadatas"])
+        except Exception:
+            return []
+        if not results or not results.get("ids"):
+            return []
+        metadatas = results.get("metadatas") or []
+        return [
+            (drawer_id, (metadatas[i] if i < len(metadatas) else None) or {})
+            for i, drawer_id in enumerate(results["ids"])
+        ]
+
+    def _documents(self, ids: list[str]) -> dict[str, str]:
+        if not ids:
+            return {}
+        try:
+            results = self.collection.get(ids=ids, include=["documents"])
+        except Exception:
+            return {}
+        return dict(zip(results.get("ids") or [], results.get("documents") or []))
 
     def merge_topics(
         self,
@@ -323,7 +586,7 @@ class UserWing:
         return None
 
     def _find_duplicate(self, hall: str, content: str) -> dict | None:
-        """Find a near-duplicate in the same hall. Returns {id, metadata} or None."""
+        """Find a near-duplicate in the same hall. Returns {id, metadata, document} or None."""
         try:
             results = self.collection.query(
                 query_texts=[content],
@@ -347,5 +610,6 @@ class UserWing:
             return {
                 "id": results["ids"][0][0],
                 "metadata": results["metadatas"][0][0] if results.get("metadatas") else {},
+                "document": results["documents"][0][0] if results.get("documents") else "",
             }
         return None

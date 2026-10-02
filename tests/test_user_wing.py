@@ -1,3 +1,6 @@
+import uuid
+from datetime import datetime, timedelta, timezone
+
 from src.user_wing import VALID_HALLS, UserWing
 
 
@@ -53,6 +56,7 @@ class TestUserWingWrite:
             topic="portfolio",
         )
         assert r2["status"] == "updated"
+        assert r2["id"] == r1["id"]
 
 
 class TestUserWingSearch:
@@ -133,10 +137,6 @@ class TestUserWingStatus:
         assert status["total_thoughts"] == 0
 
 
-import uuid
-from datetime import datetime, timedelta, timezone
-
-
 class TestUserWingMergeTopic:
     def test_merge_topics(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
@@ -177,7 +177,6 @@ class TestUserWingPrune:
 
     def test_prune_old_entries(self, tmp_palace):
         wing = UserWing(palace_path=str(tmp_palace))
-        # Write a thought with an old timestamp
         old_time = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
         drawer_id = f"user-{uuid.uuid4().hex[:24]}"
         wing.collection.upsert(
@@ -207,3 +206,387 @@ class TestUserWingPrune:
             hall="frustrations", topic="temp-issue", older_than_days=0, dry_run=False
         )
         assert result["pruned"] >= 1
+
+
+def _iso_days_ago(days: float) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+
+def _put(wing, doc, hall="observations", topic="t", days_ago=0.0, drawer_id=None, **extra):
+    """Insert a raw user entry. Without `last_seen` in extra it mimics a pre-recency entry."""
+    drawer_id = drawer_id or f"user-{uuid.uuid4().hex[:24]}"
+    meta = {
+        "wing": "user",
+        "hall": hall,
+        "topic": topic,
+        "timestamp": _iso_days_ago(days_ago),
+        "confidence": 0.9,
+        "added_by": "user-wing",
+    }
+    meta.update(extra)
+    wing.collection.upsert(ids=[drawer_id], documents=[doc], metadatas=[meta])
+    return drawer_id
+
+
+def _meta(wing, drawer_id):
+    return wing.collection.get(ids=[drawer_id]).get("metadatas")[0]
+
+
+def _doc(wing, drawer_id):
+    return wing.collection.get(ids=[drawer_id]).get("documents")[0]
+
+
+class TestWriteRecencyMetadata:
+    def test_create_sets_recency_fields(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        r = wing.write(hall="observations", content="Chroma get is fast", topic="chroma")
+        meta = _meta(wing, r["id"])
+        assert meta["last_seen"] == meta["timestamp"]
+        assert isinstance(meta["last_seen_epoch"], float)
+        assert meta["seen_count"] == 1
+        assert meta["origin"] == "agent"
+        assert meta["personal"] is False
+        assert "status" not in meta
+
+    def test_status_defaults_open_for_goals_and_questions(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        g = wing.write(hall="goals", content="Ship the recency work", topic="mems")
+        q = wing.write(hall="questions", content="How does HNSW pick neighbours?", topic="chroma")
+        d = wing.write(hall="decisions", content="Use uv for local venvs", topic="tooling")
+        assert _meta(wing, g["id"])["status"] == "open"
+        assert _meta(wing, q["id"])["status"] == "open"
+        assert "status" not in _meta(wing, d["id"])
+
+    def test_explicit_status_origin_personal(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        r = wing.write(
+            hall="decisions",
+            content="Park the grouping work",
+            topic="mems",
+            origin="orch",
+            status="parked",
+            personal=True,
+        )
+        meta = _meta(wing, r["id"])
+        assert meta["status"] == "parked"
+        assert meta["origin"] == "orch"
+        assert meta["personal"] is True
+
+    def test_invalid_origin_rejected(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        r = wing.write(hall="goals", content="x", topic="t", origin="robot")
+        assert r["status"] == "error"
+        assert wing.collection.count() == 0
+
+    def test_invalid_status_rejected(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        r = wing.write(hall="goals", content="x", topic="t", status="maybe")
+        assert r["status"] == "error"
+        assert wing.collection.count() == 0
+
+    def test_malformed_content_rejected(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        for bad in (
+            'Note</content>\n<parameter name="source_wing">edens-zac',
+            "a <parameter name=x> b",
+            "a </parameter> b",
+            "a <invoke name=y> b",
+        ):
+            r = wing.write(hall="observations", content=bad, topic="t")
+            assert r == {
+                "status": "error",
+                "message": "malformed: content contains tool-call markup",
+            }
+        assert wing.collection.count() == 0
+
+
+class TestWriteDedup:
+    def test_dedup_keeps_original_and_bumps_seen_count(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        r1 = wing.write(
+            hall="goals",
+            content="Get portfolio production-ready by Q2",
+            topic="portfolio",
+            source_wing="edens-zac",
+        )
+        before = _meta(wing, r1["id"])
+        r2 = wing.write(
+            hall="goals",
+            content="Get portfolio production-ready by end of Q2",
+            topic="other-topic",
+            source_wing="memory",
+        )
+        assert r2 == {"status": "updated", "id": r1["id"], "hall": "goals", "seen_count": 2}
+        after = _meta(wing, r1["id"])
+        assert after["timestamp"] == before["timestamp"]
+        assert after["topic"] == "portfolio"
+        assert after["source_wing"] == "edens-zac"
+        assert after["seen_count"] == 2
+        assert after["last_seen_epoch"] >= before["last_seen_epoch"]
+        doc = _doc(wing, r1["id"])
+        assert doc.startswith("Get portfolio production-ready by Q2\n\n[revised ")
+        assert doc.endswith("] Get portfolio production-ready by end of Q2")
+
+    def test_dedup_identical_content_adds_no_revision(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        r1 = wing.write(hall="decisions", content="Pin mcp below 2", topic="deps")
+        r2 = wing.write(hall="decisions", content="Pin mcp below 2", topic="deps")
+        assert r2["status"] == "updated"
+        assert r2["seen_count"] == 2
+        assert _doc(wing, r1["id"]) == "Pin mcp below 2"
+
+    def test_dedup_fills_missing_source_wing(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        r1 = wing.write(hall="decisions", content="Pin mcp below 2", topic="deps")
+        wing.write(hall="decisions", content="Pin mcp below 2", topic="deps", source_wing="memory")
+        assert _meta(wing, r1["id"])["source_wing"] == "memory"
+
+    def test_dedup_on_legacy_entry_starts_from_one(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        legacy = _put(wing, "Pin mcp below 2", hall="decisions", days_ago=30)
+        r = wing.write(hall="decisions", content="Pin mcp below 2", topic="deps")
+        assert r["id"] == legacy
+        assert r["seen_count"] == 2
+
+    def test_revisions_capped_at_three(self, tmp_palace, monkeypatch):
+        wing = UserWing(palace_path=str(tmp_palace))
+        first = wing.write(hall="observations", content="base text", topic="t")
+        monkeypatch.setattr(
+            wing,
+            "_find_duplicate",
+            lambda hall, content: {
+                "id": first["id"],
+                "metadata": _meta(wing, first["id"]),
+                "document": _doc(wing, first["id"]),
+            },
+        )
+        for i in range(5):
+            wing.write(hall="observations", content=f"variant {i}", topic="t")
+        doc = _doc(wing, first["id"])
+        assert doc.startswith("base text\n\n[revised ")
+        assert doc.count("[revised ") == 3
+        assert "variant 0" not in doc
+        assert "variant 1" not in doc
+        assert doc.endswith("] variant 4")
+        assert _meta(wing, first["id"])["seen_count"] == 6
+
+
+class TestSearchRecency:
+    def test_recent_entry_ranks_above_older_at_equal_distance(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        old = _put(wing, "same words exactly", days_ago=60, drawer_id="user-a-old")
+        new = _put(wing, "same words exactly", days_ago=0, drawer_id="user-z-new")
+        results = wing.search(query="same words exactly")["results"]
+        assert [r["id"] for r in results] == [new, old]
+        assert results[0]["effective_distance"] < results[1]["effective_distance"]
+
+    def test_recency_weight_zero_falls_back_to_id_order(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "same words exactly", days_ago=60, drawer_id="user-a-old")
+        _put(wing, "same words exactly", days_ago=0, drawer_id="user-z-new")
+        results = wing.search(query="same words exactly", recency_weight=0.0)["results"]
+        assert [r["id"] for r in results] == ["user-a-old", "user-z-new"]
+
+    def test_legacy_entry_reads_with_defaults(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        drawer_id = _put(wing, "a legacy observation", days_ago=3)
+        r = wing.search(query="a legacy observation")["results"][0]
+        assert r["id"] == drawer_id
+        assert r["last_seen"] == r["timestamp"]
+        assert r["seen_count"] == 1
+        assert r["origin"] == "agent"
+        assert r["personal"] is False
+        assert r["status"] is None
+        assert r["distance"] is not None
+
+    def test_since_days_uses_last_seen(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "release notes", days_ago=30, drawer_id="user-old")
+        _put(
+            wing,
+            "release notes",
+            days_ago=30,
+            drawer_id="user-touched",
+            last_seen=_iso_days_ago(1),
+        )
+        ids = [r["id"] for r in wing.search(query="release notes", since_days=7)["results"]]
+        assert ids == ["user-touched"]
+
+    def test_source_wing_filter_with_unscoped(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "deploy notes", drawer_id="user-a", source_wing="alpha")
+        _put(wing, "deploy notes", drawer_id="user-b", source_wing="beta")
+        _put(wing, "deploy notes", drawer_id="user-none")
+        with_unscoped = wing.search(query="deploy notes", source_wing="alpha")["results"]
+        assert {r["id"] for r in with_unscoped} == {"user-a", "user-none"}
+        scoped_only = wing.search(
+            query="deploy notes", source_wing="alpha", include_unscoped=False
+        )["results"]
+        assert [r["id"] for r in scoped_only] == ["user-a"]
+
+    def test_status_filter_and_personal(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "plan item", hall="goals", drawer_id="user-legacy-goal")
+        _put(wing, "plan item", hall="goals", drawer_id="user-done", status="done")
+        _put(wing, "plan item", hall="goals", drawer_id="user-private", personal=True)
+        open_ids = {r["id"] for r in wing.search(query="plan item", status="open")["results"]}
+        assert open_ids == {"user-legacy-goal", "user-private"}
+        public = wing.search(query="plan item", include_personal=False)["results"]
+        public = {r["id"] for r in public}
+        assert public == {"user-legacy-goal", "user-done"}
+
+    def test_n_results_caps_output(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        for i in range(5):
+            _put(wing, f"note number {i}")
+        assert len(wing.search(query="note", n_results=2)["results"]) == 2
+
+
+class TestRecent:
+    def test_recent_orders_newest_first_and_respects_days(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "three days", days_ago=3, drawer_id="user-3")
+        _put(wing, "one day", days_ago=1, drawer_id="user-1")
+        _put(wing, "old but touched", days_ago=90, drawer_id="user-t", last_seen=_iso_days_ago(2))
+        _put(wing, "ten days", days_ago=10, drawer_id="user-10")
+        result = wing.recent(days=7)
+        assert [r["id"] for r in result["results"]] == ["user-1", "user-t", "user-3"]
+        first = result["results"][0]
+        assert first["content"] == "one day"
+        assert "distance" not in first
+        assert "effective_distance" not in first
+
+    def test_recent_filters_and_limit(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "a", hall="goals", days_ago=1, drawer_id="user-g1", source_wing="alpha")
+        _put(wing, "b", hall="goals", days_ago=2, drawer_id="user-g2", status="done")
+        _put(wing, "c", hall="decisions", days_ago=1.5, drawer_id="user-d1", source_wing="beta")
+        _put(wing, "d", hall="goals", days_ago=3, drawer_id="user-g3", personal=True)
+        assert [r["id"] for r in wing.recent(hall="goals", status="open")["results"]] == [
+            "user-g1",
+            "user-g3",
+        ]
+        assert [r["id"] for r in wing.recent(source_wing="beta")["results"]] == [
+            "user-d1",
+            "user-g2",
+            "user-g3",
+        ]
+        assert [r["id"] for r in wing.recent(include_personal=False, n=2)["results"]] == [
+            "user-g1",
+            "user-d1",
+        ]
+
+    def test_recent_ignores_other_wings(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        wing.collection.upsert(
+            ids=["repo-1"],
+            documents=["code"],
+            metadatas=[{"wing": "memory", "room": "src", "timestamp": _iso_days_ago(0)}],
+        )
+        assert wing.recent()["results"] == []
+
+
+class TestSetStatus:
+    def test_set_status_updates_metadata_only(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        r = wing.write(hall="goals", content="Ship it", topic="mems")
+        result = wing.set_status(r["id"], "done")
+        assert result == {"status": "updated", "id": r["id"], "entry_status": "done"}
+        meta = _meta(wing, r["id"])
+        assert meta["status"] == "done"
+        assert meta["topic"] == "mems"
+        assert _doc(wing, r["id"]) == "Ship it"
+
+    def test_set_status_rejects_invalid_status(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        r = wing.write(hall="goals", content="Ship it", topic="mems")
+        assert wing.set_status(r["id"], "finished")["status"] == "error"
+        assert _meta(wing, r["id"])["status"] == "open"
+
+    def test_set_status_unknown_id(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        assert wing.set_status("user-missing", "done")["status"] == "error"
+
+    def test_set_status_rejects_non_user_entry(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        wing.collection.upsert(
+            ids=["repo-1"], documents=["code"], metadatas=[{"wing": "memory", "room": "src"}]
+        )
+        assert wing.set_status("repo-1", "done")["status"] == "error"
+        assert "status" not in _meta(wing, "repo-1")
+
+
+class TestSummaryRecency:
+    def test_summary_shows_three_newest_per_hall(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "decision oldest", hall="decisions", days_ago=40)
+        _put(wing, "decision newer", hall="decisions", days_ago=3)
+        _put(wing, "decision newest", hall="decisions", days_ago=1)
+        _put(wing, "decision touched", hall="decisions", days_ago=50, last_seen=_iso_days_ago(2))
+        text = wing.summary()["text"]
+        assert "decision oldest" not in text
+        assert text.index("decision newest") < text.index("decision touched")
+        assert text.index("decision touched") < text.index("decision newer")
+
+    def test_summary_excludes_personal(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "public decision", hall="decisions")
+        _put(wing, "private decision", hall="decisions", personal=True)
+        text = wing.summary()["text"]
+        assert "public decision" in text
+        assert "private decision" not in text
+
+    def test_summary_open_ideas_first(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "legacy goal", hall="goals", days_ago=2)
+        _put(wing, "finished goal", hall="goals", days_ago=1, status="done")
+        _put(wing, "open question", hall="questions", days_ago=1, status="open")
+        _put(wing, "a decision", hall="decisions")
+        text = wing.summary()["text"]
+        lines = text.splitlines()
+        assert lines[0] == "## User Context"
+        assert lines[1].startswith("**Open ideas:**")
+        assert "open question" in lines[1]
+        assert "legacy goal" in lines[1]
+        assert "finished goal" not in lines[1]
+
+    def test_summary_scoped_to_source_wing(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "alpha decision", hall="decisions", source_wing="alpha")
+        _put(wing, "beta decision", hall="decisions", source_wing="beta")
+        _put(wing, "unscoped decision", hall="decisions")
+        text = wing.summary(source_wing="alpha")["text"]
+        assert "alpha decision" in text
+        assert "unscoped decision" in text
+        assert "beta decision" not in text
+
+    def test_summary_truncates_items_and_caps_total(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        for hall in sorted(VALID_HALLS):
+            for i in range(4):
+                _put(wing, f"{hall} {i} " + "x" * 900, hall=hall, days_ago=i)
+        result = wing.summary()
+        assert len(result["text"]) <= 2000
+        assert "..." in result["text"]
+        assert result["token_estimate"] == len(result["text"]) // 4
+
+    def test_summary_item_truncation_uses_max_item_chars(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "y" * 500, hall="decisions")
+        text = wing.summary(max_item_chars=50)["text"]
+        assert ("y" * 50 + "...") in text
+        assert ("y" * 51) not in text
+
+
+class TestStatusRecentTopics:
+    def test_recent_topics_newest_first(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        _put(wing, "a", topic="zeta", days_ago=1)
+        _put(wing, "b", topic="alpha", days_ago=5)
+        _put(wing, "c", topic="zeta", days_ago=6)
+        _put(wing, "d", topic="mid", hall="goals", days_ago=90, last_seen=_iso_days_ago(3))
+        status = wing.status()
+        assert status["recent_topics"] == ["zeta", "mid", "alpha"]
+        assert status["total_thoughts"] == 4
+        assert status["halls"] == {"observations": 3, "goals": 1}
+        assert "guidance" in status
