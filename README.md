@@ -21,6 +21,11 @@ backed vector store, so every AI session starts with the same memory.
   re-embedding.
 - **`wing_user`** — a dedicated MCP-only wing for personal context
   (questions, discoveries, frustrations, goals, decisions, observations).
+  Each entry tracks `last_seen`, `seen_count` and, for goals and questions,
+  a status that starts `open`. A repeated thought keeps its original text and
+  gains a revision line. `mempalace_user_search` ranks recent entries higher,
+  `mempalace_user_recent` lists what was touched lately, and
+  `mempalace_user_set_status` marks an entry done or parked.
   Snapshotted daily; auto-restored on empty boot.
 - **`mems` CLI** — single `pip install` surface for repo registry, palace
   ops, search, publishing, ticket lookup, and hybrid Jira + palace queries.
@@ -83,6 +88,7 @@ All `mems` subcommands hit the MCP server at `MEMORY_SERVER_URL`
 | `mems search <query> [--wing W] [--room R] [--limit N] [--json]` | Semantic search across wings. |
 | `mems user-search <query> [--hall H] [--limit N]` | Search the personal User Wing. |
 | `mems user-summary [--json]` | Compact session-start digest of user context. |
+| `mems my recent [--days N] [-n N] [--json]` | User Wing entries touched in the last N days, newest first. |
 | `mems user-write <hall> "<content>" [--topic T] [--source-wing W]` | File a thought; `hall ∈ {questions,discoveries,frustrations,goals,decisions,observations}`. |
 
 ### Publishing (`.wingpack` sharing)

@@ -40,5 +40,5 @@ Always capture when:
 1. Announce the write inline before calling: "Capturing [what] to [hall] for [reason]"
 2. Call `mempalace_user_write` with the appropriate `hall`, descriptive `content`, and short `topic` slug
 3. Set `source_wing` if the thought relates to a specific codebase (e.g., `edens-zac`, `edens-zac-backend`)
-4. Deduplication is automatic — don't worry about repeats, just write
+4. Deduplication is automatic — a repeat keeps the original text, bumps its seen count, and adds your new phrasing as a revision line
 5. ERR ON THE SIDE OF WRITING
