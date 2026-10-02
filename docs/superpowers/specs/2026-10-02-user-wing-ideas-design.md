@@ -380,7 +380,7 @@ Status board. ✅ is done, with its write-up in the history file. COLD means a f
 | C4 | `mempalace_idea_clusters`, `mempalace_idea_cluster`, `cluster_id` in search results and as a filter. | C1 | M | BLOCKED on C1 |
 | C5 | Cluster section of `GET /brief`, `mems ideas` tree and the rest of the CLI, `doctor` checks, rebuild, `ideas.sqlite` in the daily snapshot. | C2, C4 | M | BLOCKED on C2, C4 |
 | C6 | Retire `mempalace_user_merge_topics`. | C3 | S | BLOCKED on C3 |
-| M1 | A Claude Code mod: a Mempalace status line, a toast on each user-wing write, and `/idea` and `/ideas`. Planned as Tasks 2 and 4 of `agent-orchestrator/docs/plans/2026-10-02-claude-code-mods.md`. The mod lives in `~/.claude`, not in this repo. | A1 | M | BLOCKED on the owner: that plan is uncommitted, and orch's `claude` binary must be pinned before the CLI is updated (its open question 2). |
+| M1 | A Claude Code mod: a Mempalace status line, a toast on each user-wing write, and `/idea` and `/ideas`. Planned as Tasks 2 and 4 of `agent-orchestrator/docs/plans/2026-10-02-claude-mods-skills.md`, which also reviews ten popular skill repos. The mod lives in `~/.claude`, not in this repo. | A1 | M | BLOCKED on the owner: that plan is uncommitted, and orch's `claude` binary must be pinned before the CLI is updated (its open questions). |
 
 B2, B5a and C0 can run in parallel. C1 and C4 can run in parallel after C0.
 
