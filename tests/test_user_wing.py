@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from src.user_wing import VALID_HALLS, UserWing
 
 
@@ -671,3 +673,50 @@ class TestStatusRecentTopics:
         assert status["total_thoughts"] == 4
         assert status["halls"] == {"observations": 3, "goals": 1}
         assert "guidance" in status
+
+
+class TestOrchCallsSkipPersonal:
+    """orch scopes every read to its repo wing with include_personal=False."""
+
+    def _seed(self, wing):
+        _put(wing, "release plan", days_ago=1, drawer_id="user-repo", source_wing="orch")
+        _put(wing, "release plan", days_ago=1, drawer_id="user-free")
+        _put(wing, "release plan", days_ago=1, drawer_id="user-other", source_wing="edens")
+        for drawer_id, scope in (
+            ("user-p-repo", {"source_wing": "orch"}),
+            ("user-p-free", {}),
+            ("user-p-other", {"source_wing": "job-search"}),
+        ):
+            _put(wing, "release plan", days_ago=1, drawer_id=drawer_id, personal=True, **scope)
+
+    @pytest.mark.parametrize(
+        "include_unscoped, expected",
+        [(True, {"user-repo", "user-free"}), (False, {"user-repo"})],
+    )
+    def test_search(self, tmp_palace, include_unscoped, expected):
+        wing = UserWing(palace_path=str(tmp_palace))
+        self._seed(wing)
+        hits = wing.search(
+            query="release plan",
+            source_wing="orch",
+            include_unscoped=include_unscoped,
+            include_personal=False,
+        )["results"]
+        assert {r["id"] for r in hits} == expected
+        assert all(r["personal"] is False for r in hits)
+
+    @pytest.mark.parametrize(
+        "include_unscoped, expected",
+        [(True, {"user-repo", "user-free"}), (False, {"user-repo"})],
+    )
+    def test_recent(self, tmp_palace, include_unscoped, expected):
+        wing = UserWing(palace_path=str(tmp_palace))
+        self._seed(wing)
+        hits = wing.recent(
+            days=7,
+            source_wing="orch",
+            include_unscoped=include_unscoped,
+            include_personal=False,
+        )["results"]
+        assert {r["id"] for r in hits} == expected
+        assert all(r["personal"] is False for r in hits)
