@@ -53,9 +53,6 @@ def _is_blocked(stdout: str) -> bool:
     return decision.get("decision") == "block"
 
 
-# --- The 9-case lint matrix from the plan -------------------------------------
-
-
 def test_case_1_explore_code_task_no_orientation_blocks():
     """Code keywords + path-like file + Explore + no orientation → block."""
     out, _ = _run_hook(_agent_payload("find ContactForm.tsx and trace its callers"))
@@ -150,9 +147,6 @@ def test_paraphrased_orientation_label_blocks():
     assert _is_blocked(out)
 
 
-# --- Robustness cases (do not corrupt the harness) ----------------------------
-
-
 def test_non_agent_tool_passes_through():
     """Hook only gates Agent. A Bash event must pass untouched."""
     payload = {
@@ -208,3 +202,8 @@ def test_other_subagent_types_pass(subagent_type: str):
     """Any subagent type outside the gated set passes regardless of prompt."""
     out, _ = _run_hook(_agent_payload("fix the bug in src/foo.py", subagent_type=subagent_type))
     assert not _is_blocked(out)
+
+
+def test_claude_subagent_type_is_gated():
+    out, _ = _run_hook(_agent_payload("fix the bug in src/foo.py", subagent_type="claude"))
+    assert _is_blocked(out)

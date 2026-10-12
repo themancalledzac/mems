@@ -1,18 +1,9 @@
-"""Measure how often filesystem discovery ran without a preceding mempalace call.
+"""Measure how often filesystem discovery ran without a palace search (`mems doctor --protocol`).
 
-This is the instrumentation `docs/protocol-audit-tracker.md` was missing. Every
-procedural row in that tracker carried "not tracked" in its last-observed-trigger
-column, which is how a majority-failure rate went unnoticed for months. Running
-`mems doctor --protocol` turns that column into a number.
-
-Definitions match the live gate exactly: the classifier is imported from
-`integration/claude_code/pretooluse_fs_gate.py` rather than reimplemented, so the
-audit can never drift from what the hook actually enforces.
-
-A "batch" is a maximal run of consecutive filesystem-discovery tool calls with no
-`mempalace_*` call between them. Batches of 2 or more are the judgeable population;
-one is a violation of CLAUDE.md Hard Rule #1 unless a mempalace call came directly
-before it.
+Classification is imported from `integration/claude_code/pretooluse_fs_gate.py`, so the audit
+counts what the gate enforces. A run is the discovery calls between two palace searches
+(`mempalace_search`, `mempalace_search_all`, `mempalace_user_search`); other mempalace tools
+and Reads of files already edited do not count either way.
 """
 
 from __future__ import annotations
@@ -33,13 +24,7 @@ _GATE_PATH = (
 
 DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
-# A "batch" in Hard Rule #1's language is 2+ consecutive discovery calls.
 BATCH_SIZE = 2
-
-# Hard Rule #1 states its own bright line: "If you find yourself running 3+
-# Greps without a mempalace call between them, you have already violated the
-# rule." This matches the live gate's default threshold, so the audit reports
-# what the gate enforces rather than a second, competing standard.
 VIOLATION_RUN_LENGTH = 3
 
 
@@ -55,12 +40,10 @@ def _load_gate():
 
 @dataclass
 class SessionStat:
-    """Filesystem runs in one session.
+    """Filesystem runs in one session, each ended by a palace search.
 
-    Runs are delimited *by* mempalace calls, so "was this run preceded by a
-    search?" is true by construction for every run but the first — which makes
-    it a useless test. What matters is how far a run got before the next search:
-    one search does not license 60 greps.
+    What matters is how long a run got before the next search, since one search
+    does not license 60 greps.
     """
 
     project: str
@@ -108,17 +91,14 @@ def _iter_tool_calls(path: Path):
 
 
 def analyze_session(path: Path, gate) -> SessionStat | None:
-    """Walk one transcript and record its filesystem batches.
+    """Walk one transcript and record its filesystem runs.
 
-    A batch is covered when a mempalace call came immediately before it. Tool
-    calls that are neither (Edit, Write, git) do not break a run — matching the
-    gate's `uncovered_run_length`, which resets only on a mempalace call.
+    Only a palace search ends a run, matching the gate's `uncovered_run_length`.
     """
     stat = SessionStat(project=path.parent.name, path=path)
     run = 0
     try:
-        for tool_name, tool_input in _iter_tool_calls(path):
-            kind = gate.classify_tool(tool_name, tool_input)
+        for kind in gate.classify_calls(_iter_tool_calls(path)):
             if kind == "MEM":
                 stat.mem_calls += 1
                 if run:

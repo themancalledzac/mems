@@ -208,15 +208,24 @@ case procedural rules alone did not cover. Before the gate existed, 82% of
 filesystem batches (244 of 297, across 86 sessions) ran to 3+ calls with no
 mempalace search.
 
-It reads the session transcript Claude Code passes on stdin and counts
-consecutive discovery calls since the last `mempalace_*` call. It calls no MCP
-tool and keeps no state file, so there is no recursion and nothing to go stale.
+It reads the transcript Claude Code passes on stdin and counts discovery calls
+since the last palace search. Only `mempalace_search`, `mempalace_search_all` and
+`mempalace_user_search` end a run. A Read of a file already edited in the session
+does not count. Inside a subagent (the payload carries `agent_id`) it reads that
+subagent's own transcript, and stays silent if it cannot find it.
+
+It only fires when a target path belongs to a wing. `integration/claude_code/repo_scope.py`
+maps the path to a wing using `$MEMORY_CONFIG_DIR/repos.json` (default
+`~/.config/mems/repos.json`), with git fallbacks for worktrees and clones. The
+reminder names that wing.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `MEMPALACE_FS_GATE_MODE` | `warn` | `warn` injects a reminder; `block` denies the call; `off` disables |
 | `MEMPALACE_FS_GATE_THRESHOLD` | `3` | Consecutive discovery calls before it fires (then every multiple) |
 | `MEMPALACE_FS_GATE_TAIL_BYTES` | `524288` | Transcript tail window to scan |
+| `MEMPALACE_FS_GATE_HOLDOUT` | unset | Fraction of sessions (by `sha1(session_id)`) that stay silent, for measurement |
+| `MEMS_DIGEST` | unset | Any non-empty value silences the gate |
 
 Only `Bash` commands that lead a segment with a discovery verb (`grep`, `rg`,
 `find`, `ls`, `cat`, `sed`, `awk`, `wc`, `tree`, `fd`) count — `git commit`,

@@ -37,9 +37,6 @@ def _session(projects_dir, project: str, calls: list[tuple[str, dict]]):
     return path
 
 
-# --- batching semantics -------------------------------------------------------
-
-
 def test_run_of_three_is_a_violation(tmp_path):
     """Hard Rule #1's own bright line: 3+ calls with no mempalace between them."""
     _session(tmp_path, "repo-a", [("Grep", {}), ("Read", {}), ("Grep", {})])
@@ -86,12 +83,13 @@ def test_single_call_is_not_a_batch(tmp_path):
 
 
 def test_mempalace_call_splits_runs(tmp_path):
-    """A search mid-stream ends one run and starts another."""
+    """Only a palace search ends a run. Other mempalace tools do not."""
     _session(
         tmp_path,
         "repo-a",
         [
             ("Grep", {}),
+            ("mcp__mempalace__mempalace_list_rooms", {}),
             ("Read", {}),
             ("Grep", {}),
             ("mcp__mempalace__mempalace_search", {}),
@@ -101,10 +99,27 @@ def test_mempalace_call_splits_runs(tmp_path):
     )
     data = protocol_audit.audit(projects_dir=tmp_path)
     assert data["batches"] == 2
-    # First run reached 3 (violation); second stopped at 2.
     assert data["violations"] == 1
     assert data["longest_run"] == 3
     assert data["mem_calls"] == 1
+
+
+def test_read_of_file_edited_earlier_is_not_discovery(tmp_path):
+    """Re-reading a file the session already changed is a read-for-editing."""
+    _session(
+        tmp_path,
+        "repo-a",
+        [
+            ("Edit", {"file_path": "/repo/a.py"}),
+            ("Grep", {}),
+            ("Read", {"file_path": "/repo/a.py"}),
+            ("Grep", {}),
+        ],
+    )
+    data = protocol_audit.audit(projects_dir=tmp_path)
+    assert data["fs_calls"] == 2
+    assert data["violations"] == 0
+    assert data["longest_run"] == 2
 
 
 def test_non_discovery_bash_excluded(tmp_path):
@@ -180,9 +195,6 @@ def test_malformed_transcript_is_skipped(tmp_path):
     assert data["sessions"] == 0
 
 
-# --- the audit/gate contract --------------------------------------------------
-
-
 def test_audit_shares_classifier_with_gate():
     """The audit must classify exactly as the live hook does.
 
@@ -199,9 +211,6 @@ def test_audit_shares_classifier_with_gate():
     ]
     for name, tool_input, expected in cases:
         assert gate.classify_tool(name, tool_input) == expected
-
-
-# --- report + CLI -------------------------------------------------------------
 
 
 def test_format_report_leads_with_the_rate(tmp_path):
