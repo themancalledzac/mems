@@ -30,11 +30,22 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     sync_p = subparsers.add_parser("sync", help="Sync repos into the palace.")
     sync_p.add_argument("--wing", default=None, help="Only sync this wing.")
     sync_p.add_argument("--full", action="store_true", help="Force full sync.")
+    sync_p.add_argument(
+        "--allow-large-prune",
+        dest="allow_large_prune",
+        action="store_true",
+        help="Apply prunes that would remove most of a wing's drawers.",
+    )
     sync_p.set_defaults(func=cmd_sync)
 
     resync_p = subparsers.add_parser("resync", help="Resync (default: full_refresh=False).")
-    resync_p.add_argument("--wing", default=None)
     resync_p.add_argument("--full", action="store_true", help="Full refresh.")
+    resync_p.add_argument(
+        "--allow-large-prune",
+        dest="allow_large_prune",
+        action="store_true",
+        help="Apply prunes that would remove most of a wing's drawers.",
+    )
     resync_p.set_defaults(func=cmd_resync)
 
     wings_p = subparsers.add_parser("wings", help="List every wing in the palace.")
@@ -131,6 +142,18 @@ def _call(tool: str, args: dict | None = None):
     return extract_tool_result(result), EXIT_OK
 
 
+def _prune_cell(prune: dict | None) -> str:
+    """One status cell for a wing's last prune: `ok -N`, `blocked N`, `error`, `skipped` or `-`."""
+    if not prune:
+        return "-"
+    status = prune.get("status", "-")
+    if status == "ok":
+        return f"ok -{prune.get('removed', 0)}"
+    if status == "blocked":
+        return f"blocked {prune.get('would_remove', 0)}"
+    return status
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     data, code = _call("memory_sync_status")
     if code != EXIT_OK:
@@ -152,30 +175,52 @@ def cmd_status(args: argparse.Namespace) -> int:
                 entry.get("last_sync_ts", "-"),
                 entry.get("files_indexed", "-"),
                 entry.get("status", "-"),
+                _prune_cell(entry.get("prune")),
             )
         )
-    print_table(rows, headers=("wing", "last_sync", "files_indexed", "status"))
+    print_table(rows, headers=("wing", "last_sync", "files_indexed", "status", "prune"))
     return EXIT_OK
 
 
+def _report_sync(data) -> int:
+    """Print a sync result, with errors and bad prunes on stderr. Returns the exit code."""
+    print_json(data)
+    data = data if isinstance(data, dict) else {}
+    for err in data.get("errors") or []:
+        print(f"error: {err.get('wing')}: {err.get('error')}", file=sys.stderr)
+    if data.get("message"):
+        print(f"error: {data['message']}", file=sys.stderr)
+    for wing, prune in (data.get("prune") or {}).items():
+        if prune.get("status") in ("blocked", "error"):
+            print(
+                f"prune {prune['status']}: {wing}: {prune.get('reason', '')}",
+                file=sys.stderr,
+            )
+    return EXIT_OK if data.get("status") == "ok" else EXIT_USER_ERROR
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
-    payload = {"full": bool(args.full)}
+    payload = {
+        "full": bool(args.full),
+        "allow_large_prune": bool(getattr(args, "allow_large_prune", False)),
+    }
     if args.wing:
         payload["wing"] = args.wing
     data, code = _call("memory_sync", payload)
     if code != EXIT_OK:
         return code
-    print_json(data)
-    return EXIT_OK
+    return _report_sync(data)
 
 
 def cmd_resync(args: argparse.Namespace) -> int:
-    payload = {"full_refresh": bool(args.full)}
+    payload = {
+        "full_refresh": bool(args.full),
+        "allow_large_prune": bool(getattr(args, "allow_large_prune", False)),
+    }
     data, code = _call("mempalace_resync", payload)
     if code != EXIT_OK:
         return code
-    print_json(data)
-    return EXIT_OK
+    return _report_sync(data)
 
 
 def cmd_wings(args: argparse.Namespace) -> int:

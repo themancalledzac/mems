@@ -79,27 +79,37 @@ def handle_sync(
     data_path: str,
     wing: str | None = None,
     full: bool = False,
+    allow_large_prune: bool = False,
 ) -> dict:
-    """Handle memory_sync tool call."""
+    """Sync repos into the palace and report only the wings this run touched.
+
+    Status is `partial` when any wing errored or any prune was `error` or `blocked`.
+    """
     engine = SyncEngine(config_path=config_path, data_path=data_path)
 
     if wing and wing not in engine.repos:
         return {"status": "error", "message": f"Unknown wing: {wing}"}
 
-    if full or not SyncLedger(f"{data_path}/sync_ledger.json").entries:
-        engine.full_sync(wing_name=wing)
+    if full or not engine.ledger.entries:
+        touched = engine.full_sync(wing_name=wing, allow_large_prune=allow_large_prune)
     else:
-        engine.incremental_sync(wing_name=wing)
+        touched = engine.incremental_sync(wing_name=wing, allow_large_prune=allow_large_prune)
 
-    synced = []
-    errors = []
-    for name, entry in engine.ledger.entries.items():
-        if entry["status"] == "synced":
+    synced: list[str] = []
+    errors: list[dict] = []
+    prune: dict[str, dict] = {}
+    for name in touched:
+        entry = engine.ledger.get(name) or {}
+        if entry.get("status") == "synced":
             synced.append(name)
-        elif entry["status"] == "error":
+        else:
             errors.append({"wing": name, "error": entry.get("error", "unknown")})
+        if entry.get("prune"):
+            prune[name] = entry["prune"]
 
-    return {"status": "ok", "synced": synced, "errors": errors}
+    bad_prune = any(r.get("status") in ("error", "blocked") for r in prune.values())
+    status = "partial" if errors or bad_prune else "ok"
+    return {"status": status, "synced": synced, "errors": errors, "prune": prune}
 
 
 def handle_sync_status(config_path: str, data_path: str) -> dict:
@@ -307,7 +317,7 @@ def handle_resync(
     config_path: str,
     data_path: str,
     full_refresh: bool = False,
-    output_dir: str | None = None,
+    allow_large_prune: bool = False,
 ) -> dict:
     """Ops-level resync. Delegates to handle_sync with full=full_refresh."""
     result = handle_sync(
@@ -315,6 +325,7 @@ def handle_resync(
         data_path=data_path,
         wing=None,
         full=full_refresh,
+        allow_large_prune=allow_large_prune,
     )
     result["full_refresh"] = full_refresh
     return result

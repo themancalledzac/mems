@@ -64,7 +64,7 @@ All `mems` subcommands hit the MCP server at `MEMORY_SERVER_URL`
 
 | Command | Purpose |
 |---------|---------|
-| `mems repo list` | Show registered repos with last-sync timestamp. |
+| `mems repo list` | Show registered repos. The last-sync column comes from the server and shows `-` when it is down. |
 | `mems repo add <name> <path>` | Register a local git repo as a wing. |
 | `mems repo remove <name>` | Unregister a wing (does not delete palace data). |
 | `mems repo show <name>` | Dump the JSON entry for one wing. |
@@ -73,9 +73,9 @@ All `mems` subcommands hit the MCP server at `MEMORY_SERVER_URL`
 
 | Command | Purpose |
 |---------|---------|
-| `mems status` | Sync ledger digest (per-wing last sync, file count, status). |
-| `mems sync [--wing W] [--full]` | Run `memory_sync` — incremental by default. |
-| `mems resync [--wing W] [--full]` | Call `mempalace_resync` directly. |
+| `mems status` | Sync ledger digest: per-wing last sync, file count, status, and last prune (`ok -N`, `blocked N`, `error`, `skipped`). |
+| `mems sync [--wing W] [--full] [--allow-large-prune]` | Run `memory_sync`, incremental by default. Exits 1 when any wing errored or a prune was blocked or failed. |
+| `mems resync [--full] [--allow-large-prune]` | Call `mempalace_resync` for every wing. Same exit code as `mems sync`. |
 | `mems wings` | List every wing with drawer counts. |
 | `mems rooms <wing>` | List rooms inside a wing. |
 | `mems logs [--limit N] [--wing W]` | Recent drawer log entries. |

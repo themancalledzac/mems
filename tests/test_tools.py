@@ -2,7 +2,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from src.tools import handle_sync, handle_sync_status
+from src.sync_engine import SyncLedger
+from src.tools import handle_resync, handle_sync, handle_sync_status
 
 
 class TestHandleSync:
@@ -45,6 +46,138 @@ class TestHandleSync:
             wing="nonexistent",
         )
         assert result["status"] == "error"
+
+    def test_sync_status_partial_on_prune_error(self, tmp_config, tmp_palace, mock_repo):
+        error_report = {
+            "status": "error",
+            "removed": 0,
+            "would_remove": 0,
+            "reason": "RuntimeError: boom",
+        }
+        with (
+            patch("src.sync_engine.list_indexable_files", return_value=[]),
+            patch("src.sync_engine.prune_wing", return_value=error_report),
+            patch("src.sync_engine.process_file", return_value=(1, "general", None)),
+        ):
+            result = handle_sync(config_path=str(tmp_config), data_path=str(tmp_palace))
+
+        assert result["status"] == "partial"
+        assert result["synced"] == ["test-wing"]
+        assert result["errors"] == []
+        assert result["prune"]["test-wing"]["status"] == "error"
+
+    def test_sync_status_partial_on_blocked_prune(self, tmp_config, tmp_palace, mock_repo):
+        blocked = {"status": "blocked", "removed": 0, "would_remove": 300, "reason": "large"}
+        with (
+            patch("src.sync_engine.list_indexable_files", return_value=[]),
+            patch("src.sync_engine.prune_wing", return_value=blocked) as prune,
+            patch("src.sync_engine.process_file", return_value=(1, "general", None)),
+        ):
+            result = handle_resync(
+                config_path=str(tmp_config),
+                data_path=str(tmp_palace),
+                full_refresh=True,
+                allow_large_prune=True,
+            )
+
+        assert result["status"] == "partial"
+        assert result["prune"]["test-wing"]["status"] == "blocked"
+        assert prune.call_args.kwargs["allow_large"] is True
+
+    def test_sync_reports_only_touched_wings(self, tmp_config, tmp_palace, mock_repo):
+        repos = {"test-wing": {"path": str(mock_repo)}, "other-wing": {"path": "/nowhere"}}
+        (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
+        ledger = SyncLedger(Path(tmp_palace) / "sync_ledger.json")
+        ledger.mark_error("other-wing", "/nowhere", "old failure")
+        ledger.save()
+
+        with (
+            patch("src.sync_engine.list_indexable_files", return_value=[]),
+            patch("src.sync_engine.process_file", return_value=(1, "general", None)),
+        ):
+            result = handle_sync(
+                config_path=str(tmp_config),
+                data_path=str(tmp_palace),
+                wing="test-wing",
+                full=True,
+            )
+
+        assert result["status"] == "ok"
+        assert result["synced"] == ["test-wing"]
+        assert result["errors"] == []
+        assert list(result["prune"]) == ["test-wing"]
+
+    def test_sync_reports_errored_wing(self, tmp_config, tmp_palace):
+        repos = {"bad-wing": {"path": "/nonexistent/repo"}}
+        (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
+
+        result = handle_sync(config_path=str(tmp_config), data_path=str(tmp_palace))
+
+        assert result["status"] == "partial"
+        assert result["synced"] == []
+        assert [e["wing"] for e in result["errors"]] == ["bad-wing"]
+
+
+class TestSyncToolsRunInWorkerThread:
+    async def test_memory_sync_runs_in_worker_thread(self, tmp_palace, tmp_config, monkeypatch):
+        import anyio
+
+        from src import mcp_http_server
+
+        threaded = []
+
+        async def fake_run_sync(func, *args, **kwargs):
+            threaded.append(func)
+            return func(*args)
+
+        def fake_handle_sync(**kwargs):
+            return {"status": "ok", "synced": [], "errors": [], "prune": {}, "kwargs": kwargs}
+
+        monkeypatch.setattr(anyio.to_thread, "run_sync", fake_run_sync)
+        monkeypatch.setattr(mcp_http_server, "handle_sync", fake_handle_sync)
+        server = mcp_http_server.create_server(
+            palace_path=str(tmp_palace), config_path=str(tmp_config)
+        )
+
+        result = await server._tool_manager.call_tool(
+            "memory_sync", {"wing": "test-wing", "allow_large_prune": True}
+        )
+
+        assert len(threaded) == 1
+        assert result["kwargs"]["allow_large_prune"] is True
+        assert result["kwargs"]["wing"] == "test-wing"
+
+    async def test_resync_runs_in_worker_thread(self, tmp_palace, tmp_config, monkeypatch):
+        import anyio
+
+        from src import mcp_http_server
+
+        threaded = []
+
+        async def fake_run_sync(func, *args, **kwargs):
+            threaded.append(func)
+            return func(*args)
+
+        def fake_handle_resync(**kwargs):
+            return {"status": "ok", "kwargs": kwargs}
+
+        monkeypatch.setattr(anyio.to_thread, "run_sync", fake_run_sync)
+        monkeypatch.setattr(mcp_http_server, "handle_resync", fake_handle_resync)
+        server = mcp_http_server.create_server(
+            palace_path=str(tmp_palace), config_path=str(tmp_config)
+        )
+
+        result = await server._tool_manager.call_tool(
+            "mempalace_resync", {"full_refresh": True, "allow_large_prune": True}
+        )
+
+        assert len(threaded) == 1
+        assert result["kwargs"] == {
+            "config_path": str(tmp_config),
+            "data_path": str(tmp_palace),
+            "full_refresh": True,
+            "allow_large_prune": True,
+        }
 
 
 class TestHandleSyncStatus:
