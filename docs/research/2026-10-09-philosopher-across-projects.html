@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Philosopher Across Projects</title><style>
+:root{--ink:#1d1c1b;--mut:#6c6863;--line:#e6e3de;--hl:#fde7c4;--ac:#5b4fc7;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--serif:Charter,Georgia,serif}*{box-sizing:border-box}body{margin:0;background:#f6f6f5;color:var(--ink);font:17px/1.85 var(--serif)}.sheet{max-width:56rem;margin:0 auto;background:#fff;padding:3.5rem 1.25rem 4rem}.col{max-width:34rem;margin:0 auto}header{text-align:center}.eyebrow,.cap,figcaption,th,.node,.src,.kg h4{font-family:var(--mono);text-transform:uppercase;letter-spacing:.1em}.eyebrow{font-size:.62rem;color:var(--mut);text-align:center}h1{font-weight:400;font-size:clamp(1.8rem,5vw,2.4rem);line-height:1.12;margin:1rem 0 1.4rem}.deck{color:var(--mut);font-size:.95rem;line-height:1.9;margin:0 auto 1.3rem}.orig{font:.7rem var(--mono);text-decoration:none;border-bottom:1px solid var(--line)}hr{border:0;border-top:1px solid var(--mut);width:1.2rem;margin:3rem auto}h2{font-size:1rem;margin:3.2rem 0 1rem}h3{font-size:.95rem;font-style:italic;margin:2rem 0 .6rem}p,li,dd{font-size:.95rem}p{margin:0 0 1.25rem;text-align:justify;hyphens:auto}mark{background:var(--hl);color:inherit;padding:.1em .2em;-webkit-box-decoration-break:clone;box-decoration-break:clone}a{color:inherit}a.src{font-size:.58rem;color:var(--mut);text-decoration:none;border-bottom:1px dotted var(--mut);white-space:nowrap}.note{font:.78rem/1.6 var(--mono);color:var(--mut);border-left:2px solid var(--line);padding:.2rem .8rem;margin:1.5rem 0}figure{margin:2.5rem 0;text-align:center}figcaption,.cap{font-size:.6rem;line-height:1.5;color:var(--mut);margin-top:.8rem}.flow{display:flex;flex-wrap:wrap;justify-content:center;gap:1.8rem 1.6rem;margin:1rem 0}.node{position:relative;border:1px solid #cfcaf0;background:#f3f2fc;border-radius:8px;padding:.6rem .75rem;font-size:.62rem;line-height:1.4;min-width:6.5rem}.node small{display:block;color:var(--mut);font-size:.55rem}.node.in{border-color:#f0c9a0;background:#fdf1e3}.node.fz{border-color:#d9d6d1;background:#faf9f8}.node:not(:last-child):after{content:"\2192";position:absolute;right:-1.25rem;top:50%;transform:translateY(-50%);color:var(--ac);font-size:.9rem}table{width:100%;border-collapse:collapse;font-size:.85rem;margin:1.5rem 0}th,td{padding:.5rem .6rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{font-size:.58rem;color:var(--mut)}.kg{display:grid;grid-template-columns:repeat(3,1fr);gap:1.6rem;margin:1.5rem 0}.kg>div{display:flex;flex-direction:column;gap:.5rem;position:relative}.kg>div+div:before{content:"\2192";position:absolute;left:-1.2rem;top:50%;color:var(--ac)}.kg h4{margin:0;font-size:.58rem;color:var(--mut);text-align:center}.kg a{border:1px solid var(--line);border-radius:6px;padding:.4rem .6rem;font-size:.8rem;text-align:center;text-decoration:none}.kg .me{border-color:var(--ac);background:#f3f2fc}code{font-family:var(--mono);font-size:.85em}.refs{list-style:none;counter-reset:r;padding:0;margin:1.5rem 0}.refs li{counter-increment:r;position:relative;padding:1rem 0 1rem 2.2rem;border-top:1px solid var(--line)}.refs li:before{content:counter(r) ".";position:absolute;left:0;top:1.2rem;font:.6rem var(--mono);color:var(--mut)}.refs a.t,.refs span.t{font-weight:700;font-size:.9rem;text-decoration:none;overflow-wrap:anywhere}.refs .d{display:block;font-size:.75rem;line-height:1.6;color:var(--mut)}footer{text-align:center;font:.6rem var(--mono);color:var(--mut);margin-top:3rem}@media(max-width:560px){.kg{grid-template-columns:1fr}.kg>div+div:before{content:"\2193";left:50%;top:-1.3rem}}@media(max-width:820px){.flow{flex-direction:column;align-items:center}.node:not(:last-child):after{content:"\2193";right:auto;left:50%;top:auto;bottom:-1.4rem;transform:translateX(-50%)}}
+@media print{body{background:#fff}.sheet{padding:0}.orig{display:none}}@media(min-width:900px){figure>.flow{margin-left:-10rem;margin-right:-10rem}}
+code{overflow-wrap:anywhere}.tw{overflow-x:auto;margin:1.5rem 0}.tw table{margin:0;min-width:40rem}.refs span.t{font-weight:700;font-size:.9rem}
+</style></head>
+<body><div class="sheet"><div class="col">
+
+<header>
+  <div class="eyebrow">Project strategy · Memory, orch, edens.zac, edens.zac.backend · 2026-10-09</div>
+  <h1>Where philosopher pages help across four repos, and what to work on next</h1>
+  <p class="deck">Use philosopher for two jobs: explaining a mechanism or design that is slow to rebuild from code, and laying out an owner decision that has real trade-offs. Never use it in place of Markdown that an agent executes, ticks off, commits against, or that orch hashes or reads by path. The work that matters most right now is not a page. Finish the passkey deploy in order, run orch's first real request, and answer the four decisions that block similar collections (D1 to D4). Last commits: memory 2026-10-02, orch 2026-10-04, backend 2026-09-19, frontend 2026-09-15.</p>
+  <a class="orig" href="#refs">Evidence: 20 local sources ↓</a>
+</header>
+<hr>
+
+<figure><div class="flow">
+  <div class="node in">Memory (mems)<small>session context, user wing</small></div>
+  <div class="node">orch<small>plans, builds, lands changes</small></div>
+  <div class="node">edens.zac.backend<small>Spring API, Postgres on EC2</small></div>
+  <div class="node fz">edens.zac<small>Next.js site on Amplify</small></div>
+</div>
+<figcaption>How the four repos connect. orch reading memory is planned. orch working in the portfolio repos is built but has not run on a real request.</figcaption></figure>
+
+<h2 id="s-short">Pages are for explaining and deciding; Markdown stays for the work</h2>
+<p>The owner asked how to use philosopher across memory, orch (which the owner calls "arch"), edens.zac and edens.zac.backend, and what those repos should focus on next. The first answer is narrow. The second has little to do with the skill.</p>
+<p>A philosopher page helps a reader understand something once. That fits two kinds of document here. One is a mechanism that is slow to rebuild from code, such as frontend row composition, a 1,883-line file <a class="src" href="#r17">[rowCombination.ts]</a>. The other is an owner decision with several real options <a class="src" href="#r16">[decision table, 401-432]</a>.</p>
+<p><mark>A page must never replace a file that an agent executes, ticks, commits against, or that orch hashes or reads by path.</mark> Those files are the working record. orch binds each approval to a sha256 hash of the artifact <a class="src" href="#r11">[domain.md:183,207]</a>. The backend cleanup tracker is edited by agents and checked by a gate script <a class="src" href="#r19">[tracker, 18-60]</a>.</p>
+<p>The top priorities, in order. The ranked table near the end gives the reasons.</p>
+<ol>
+  <li>Find out what is deployed, then finish the passkey deploy in order.</li>
+  <li>Run orch's first real request, a small frontend change. It is the top stated goal and everything it needs is built.</li>
+  <li>Answer D1 to D4 to unblock similar collections, then build the endpoint. D5 and D6 can wait.</li>
+  <li>Build memory's open-ideas commands, then run its two spikes, B0 and C0.</li>
+  <li>Build orch's eval harness.</li>
+  <li>Fix the stale docs.</li>
+</ol>
+
+<h2 id="s-skill">Philosopher is a pinned Markdown bundle with local fixes on top</h2>
+<p>Philosopher is a <code>SKILL.md</code> entry point over a bundle of Markdown files: seven core files for workflow, template and sources, and twelve study domains. It writes one HTML file with inline CSS and no JavaScript. Brief pages run 250 to 400 words, standard 700 to 1,100, deep 1,500 to 2,500 <a class="src" href="#r2">[README, audience-depth.md]</a>.</p>
+<p>One GitHub account created the upstream repo on 2026-10-08. A review found eight problems. The local install fixes the ones that mattered <a class="src" href="#r1">[local-rules.md]</a>.</p>
+<table>
+<tr><th>Upstream problem</th><th>Local fix</th></tr>
+<tr><td>SKILL.md falls back to fetching its instructions from the repo's main branch. The README installs through an unpinned npm CLI. Whoever controls the repo controls the agent.</td><td>A git clone pinned at the reviewed commit, with local changes on a branch named <code>local</code>. The bundle is never read from the network.</td></tr>
+<tr><td>The trigger fires on any "learn", "understand" or "explain" request, so chat questions would produce HTML files.</td><td>Narrowed to explicit requests for a page, paper, study guide or reading guide.</td></tr>
+<tr><td>The source policy knows only web sources.</td><td>Local evidence ranks above every web tier: <code>path:line</code> for files, commits described by what they did, mempalace entries by hall and date.</td></tr>
+<tr><td>All twelve domains teach a topic. None assesses a project.</td><td>A new project-strategy domain, and a classifier rule that questions about the owner's repos route there.</td></tr>
+<tr><td>The bundle contradicts itself on which files to read and on what a brief page contains.</td><td>Depth fixes in the local rules. Brief pages drop the graph and the last three sections.</td></tr>
+<tr><td>It says not to re-read the output, and it saves to <code>./philosopher-output/</code> in any folder.</td><td>Verify by rendering at 375 px and desktop width. Save to the repo's <code>docs/research/</code>.</td></tr>
+<tr><td>Light theme only.</td><td>A dark-mode CSS block to add before publishing as an Artifact.</td></tr>
+<tr><td>The template's own writing style.</td><td>The owner's writing style wins.</td></tr>
+</table>
+<p>Two problems remain. The project may change fast. Its token targets are stated, not measured <a class="src" href="#r2">[README]</a>. To update, fetch upstream, read the diff against the local branch, rebase, and run the validator <a class="src" href="#r1">[SKILL.md, Upstream]</a>. orch already has one hand-made HTML explainer, the offline model playbook <a class="src" href="#r13">[README.md:15]</a>.</p>
+
+<h2 id="s-kinds">Most documents in the four repos should stay Markdown</h2>
+<p>The frontend alone has 39 plans, 23 specs and 33 spikes. Sorting documents by kind gives a short rule. If a reader needs to understand it once, a page (a mechanism explainer or a decision brief) can help. If an agent or the owner works from it again and again, it stays Markdown.</p>
+<table>
+<tr><th>Document kind</th><th>Page or Markdown</th><th>Examples</th></tr>
+<tr><td>A mechanism that lives in code</td><td>Page</td><td>Memory's search ranking in <code>src/user_wing.py</code>; frontend <code>app/utils/rowCombination.ts</code>; backend <code>CollectionAccessService.java</code></td></tr>
+<tr><td>An approved design or spec</td><td>Page beside it. The Markdown stays the record.</td><td>orch <code>design/architecture.md</code>; memory's short-term context spec; the backend's access-level designs</td></tr>
+<tr><td>A decision with several real options</td><td>Page (a decision brief)</td><td>Frontend D1 to D6; orch's eight open UI decisions</td></tr>
+<tr><td>A plan with checkboxes that agents execute</td><td>Markdown</td><td>Memory's three plans; the plans folders in both portfolio repos</td></tr>
+<tr><td>A status board or tracker</td><td>Markdown</td><td>Memory's build-order board and <code>docs/protocol-audit-tracker.md</code>; orch's v0 build board; frontend <code>docs/spikes/2026-features.md</code>; the backend cleanup tracker</td></tr>
+<tr><td>Agent rules and prompts</td><td>Markdown</td><td>orch <code>.claude/agents/</code>, <code>prompts/agents/</code>, <code>docs/rules.md</code>; backend <code>.claude/*.md</code>; frontend <code>CLAUDE.md</code></td></tr>
+<tr><td>A file orch hashes or reads by path</td><td>Markdown</td><td>orch workflow artifacts, whose approvals bind to a hash</td></tr>
+<tr><td>Handoffs and running summaries</td><td>Markdown, with one exception</td><td>Frontend handoffs and <code>000-summary.md</code>; backend handoffs. The exception is the backend's deployment-strategy handoff, which explains a mechanism.</td></tr>
+</table>
+<p>A page also carries the errors of the prose it was written from. Every repo has a stale document. orch's HANDOFF.md says nothing is built <a class="src" href="#r13">[HANDOFF.md:3]</a>. Memory's README still gives the hierarchy as wings, rooms and drawers, while the config routes by wing, hall and room <a class="src" href="#r7">[README.md:13]</a>. The backend README gives an older Spring Boot version, and <code>todo/TODO.md</code> describes a 1,161-line CollectionService that is now 1,747 lines <a class="src" href="#r20">[README, TODO.md]</a>. <mark>Write mechanism pages from code and git, and fix the stale prose in the same session.</mark></p>
+
+<h2 id="s-briefs">Three decision batches are worth a page; the rest are quick answers</h2>
+<p>Many items across the repos wait on the owner's own answers.</p>
+<ul>
+  <li>Memory: raise the summary budget from 2,400 to 3,000 characters, or keep it (A3). Also, what happens when a parked or done idea is restated <a class="src" href="#r3">[board, 366; 420-424]</a>.</li>
+  <li>orch: five choices for the first real request, such as the frontend's allowed paths and which change with what budget <a class="src" href="#r9">[any-repo.md:215-221]</a>. Also eight open decisions for the new UI <a class="src" href="#r10">[What the owner must decide]</a>.</li>
+  <li>Frontend: six similar-collections decisions (D1 to D6), plus about ten more on the feature board, from staging seed visibility to a <code>/person/[id]</code> route <a class="src" href="#r16">[401-432]</a>.</li>
+  <li>Backend: the access-token secret rotation story (U-3) and how disk import is triggered <a class="src" href="#r19">[U-3; :1118]</a>.</li>
+</ul>
+<p>Most of these are yes-or-no questions. A page would take longer to read than the question takes to answer. Three batches have real trade-offs, and each is worth a standard-depth page.</p>
+<ol>
+  <li>Similar collections, D1 to D6. Only D1 to D4 block the feature (RC2). D5 is where suggested collections are shown. D6 is pgvector, which blocks a later item, RC5 <a class="src" href="#r16">[2026-features.md:266-269]</a>. The recommendation is curated pins first, a computed fill to five, and scoring per request on the backend <a class="src" href="#r16">[rc-similar-collections.md:122-134]</a>. A prototype on live data (39 collections, 949 images) found that a 40-line weighted score gave the right top five with no ML and no schema change <a class="src" href="#r18">[mempalace 2026-08-30]</a>. The choices touch both portfolio repos. Answer D1 to D4 to unblock similar collections. D5 and D6 can wait.</li>
+  <li>The eight open decisions in orch's UI plan. A ninth, where repo configs live, was settled by the any-repo plan. On 2026-10-04 the owner stopped investing in the Claude Code pane and asked for a standalone UI plan. That plan proposes a web page and a menu bar app. Nothing is built. The plan's review and recommendation are good material for a page <a class="src" href="#r10">[orch-app-ui.md:3]</a>.</li>
+  <li>Optional: where memory lives. Memory is split across seven stores, from the user wing to native auto-memory and handoff notes. The proposed fix is a memory-map table and a <code>mems doctor</code> check <a class="src" href="#r8">[observations 2026-10-04]</a>. A brief page could map the stores before the owner decides which to keep.</li>
+</ol>
+<p><mark>Make a decision page only when the owner has to weigh options, not when the owner has to say yes.</mark></p>
+
+<h2 id="s-mem">Memory: the user wing's first phase is live, and the idea work waits on two spikes</h2>
+<h3>Where it stands</h3>
+<p>The MCP server, sync engine, daily user-wing snapshot, <code>mems</code> CLI and Docker runtime are built and working <a class="src" href="#r7">[handoff, 30-45]</a>. Phase A of the user-wing work went live on 2026-10-02. It added seen counts, status and a personal flag, no-overwrite dedup, and a repair script that fixed 114 entries <a class="src" href="#r3">[board, A1-A2]</a>. The filesystem gate and subagent orientation gate are live. Before them, 82% of batches (244 of 297) ran three or more filesystem calls with no search <a class="src" href="#r4">[tracker:21]</a>.</p>
+<p>This checkout is on a docs branch two commits ahead of main, dated 2026-10-01 and 2026-10-02. Recent code commits added a health-route watchdog, tini as init, and version pins for mempalace and mcp <a class="src" href="#r7">[git log]</a>. The repo has no remote, by choice <a class="src" href="#r8">[decisions 2026-08-22]</a>. Nothing is in flight.</p>
+<h3>What to do next</h3>
+<ol>
+  <li>Build the <code>mems ideas open</code> and <code>stale</code> commands (B5a) first. They are small, can start now, and come first in the board's own next-run order <a class="src" href="#r3">[board, 393-397]</a>.</li>
+  <li>Then run B0 and C0. B0 runs the extraction prompt on 20 real transcripts in dry run. C0 tries clustering thresholds on an export of the user wing. Idea extraction (B1 to B4) and the idea tree (C1 to C6) are blocked on them. B2 and B5a are not. The problem they address, ideas getting lost, is not solved: the wing held 3,202 entries on 2026-10-02 and none had a seen count above 1 <a class="src" href="#r3">[:52-61]</a>. It now holds about 3,265.</li>
+  <li>Clear the small items alongside: answer the summary budget question (A3) and do the dev-env cleanup (A4). The untracked <code>uv.lock</code> in this checkout shows A4 is not done.</li>
+  <li>Decide the memory-store layout. Native auto-memory is still written (54 files, 4 since 2026-09-01) even though CLAUDE.md says mempalace replaces it <a class="src" href="#r8">[discoveries 2026-10-04]</a>.</li>
+</ol>
+<h3>Pages worth making first</h3>
+<ul>
+  <li>How the user wing ranks, merges and trims entries. Standard depth, from <code>src/user_wing.py</code>. Search adds a recency penalty of up to 0.1 to the distance. A near-duplicate under distance 0.15 raises the seen count instead of writing a new entry. The summary caps items at 220 characters and the whole at 2,400 <a class="src" href="#r6">[:25-41, :268-336, :390-430]</a>. These numbers bear on A3 and C0.</li>
+  <li>How the filesystem gate reads the transcript tail without a state file. Brief depth, from <code>docs/MR-fs-gate.md</code> <a class="src" href="#r4">[MR-fs-gate.md:1-20]</a>.</li>
+  <li>The short-term context design. Standard depth, as a review aid. The spec is still a draft for review, not approved <a class="src" href="#r5">[spec:3]</a>.</li>
+</ul>
+<p>Keep as Markdown: the build-order board and its history file, the protocol audit tracker, and the three plans.</p>
+
+<h2 id="s-orch">orch: everything for a first real request is built, and it has not run</h2>
+<h3>Where it stands</h3>
+<p>The last commit, on 2026-10-04, made drafts land on the local main branch by default. Nothing has landed since <a class="src" href="#r13">[git log]</a>. That day also added per-repo configs read fresh at each submit, <code>orch setup</code>, <code>orch repo check</code>, and registration on the owner's yes <a class="src" href="#r9">[any-repo.md:3, 44-51]</a>. The engine, YAML workflows, SQLite store, secret scan, budgets, MCP tools and model ladders were built earlier <a class="src" href="#r11">[domain.md:48-125]</a>.</p>
+<p>Not built: the standalone UI, house rules, shadow trials, a security reviewer, mempalace context for jobs and light workflows <a class="src" href="#r10">[plan headers]</a>. Model ladders are on main. Two small branches are unmerged: a demo branch (2 commits) and a one-step send-back retry (1 commit) <a class="src" href="#r11">[catalog.py:343]</a>. Memory's board row B6 still lists the model-ladders merge as a blocker, so that row is stale on this point <a class="src" href="#r3">[board, B6]</a>.</p>
+<h3>What to do next</h3>
+<ol>
+  <li>Run the first real request. Making orch usable in any repo under <code>~/Code</code> has been the top goal since 2026-10-04 <a class="src" href="#r14">[goals 2026-10-04]</a>. The plan makes the first request an edens.zac (frontend) change <a class="src" href="#r9">[any-repo.md:17-25]</a>. The backend's config is not registered yet and has a known secret-scan skip. Answer the five open choices first. A suggestion, not a recorded plan: start with one of the two small type-drift fixes the backend filed for the frontend (FE-2 or FE-3), which are ready to start. Once the backend is registered, a second request can add <code>passwordLoginAvailable</code> to its passkey list response. Today only the DELETE response has it, and the admin passkey screen (AU2) waits on it <a class="src" href="#r16">[302-330]</a>.</li>
+  <li>Fix the stale request view and answer the eight open UI decisions before building the new UI. The pane shows old requests in a fresh session, because requests record the repo, not the submitting session. The plan's session-tagging phase is about a day <a class="src" href="#r10">[orch-app-ui.md:19, 468-474]</a>.</li>
+  <li>Build the eval harness, then shadow trials. The 2026-10-08 ruling limits Haiku to small repeatable tasks with checkable output. It rests on judgment, not measurement <a class="src" href="#r14">[decisions 2026-10-08]</a>. An audit the same day found 43% of dispatches inherit the parent model <a class="src" href="#r14">[observations 2026-10-08]</a>. There is no <code>orch eval</code> command and no evals table, and shadow trials depend on the harness <a class="src" href="#r13">[shadow-trials.md:159]</a>.</li>
+  <li>Update README.md and HANDOFF.md. HANDOFF.md, dated 2026-09-20, says nothing is built, and the README lists it as the first file to read <a class="src" href="#r13">[README.md:7]</a>.</li>
+</ol>
+<h3>Pages worth making first</h3>
+<ul>
+  <li><code>design/architecture.md</code> at deep depth. The repo tells readers to start with this file.</li>
+  <li>Sections 2 and 3 of <code>design/application/domain.md</code> at standard depth: workflows as data, and the request state machines <a class="src" href="#r11">[domain.md, sections 2-3]</a>.</li>
+  <li>The UI decision brief at standard depth, from the review in <code>docs/plans/2026-10-04-orch-app-ui.md</code>.</li>
+</ul>
+<p>Keep as Markdown: the v0 build status board, the agent definitions and prompts, <code>docs/rules.md</code>, and anything the engine hashes or the planner reads by path.</p>
+
+<h2 id="s-fe">edens.zac: the passkey work is owed, and similar collections waits on six answers</h2>
+<h3>Where it stands</h3>
+<p>The last commit, on 2026-09-15, merged #437, which joined <code>/user</code> and <code>/admin</code> into one space. The two weeks before it shipped admin message search (#396, #397), proxy hardening (#404), a lint rule against inline comments (#414, with docblocks exempted in #417) and an npm audit gate in CI (#419) <a class="src" href="#r18">[git log]</a>. At last count there were 4,985 tests, with <code>tsc</code> clean <a class="src" href="#r15">[handoff]</a>. Amplify deploys main automatically in about 15 minutes.</p>
+<p>Twelve files sit modified and uncommitted on main. They set two tiles per row on phones <a class="src" href="#r18">[git diff]</a>. The edens-zac mempalace wing has no entries after 2026-09-16.</p>
+<p>The #437 handoff lists work still owed: WebAuthn fixtures and Task 21, a first live run of <code>tests/e2e/passkey.spec.ts</code>, <code>WEBAUTHN_RP_ID</code> and <code>WEBAUTHN_ALLOWED_ORIGINS</code> in the EC2 <code>.env</code> before the backend deploys, and signed-in checks on <code>/admin</code> and <code>/user</code> <a class="src" href="#r15">[owed work]</a>.</p>
+<h3>What to do next</h3>
+<ol>
+  <li>Finish and verify the passkey work, in the order shown in the <a href="#s-both">cross-repo section</a>.</li>
+  <li>Commit or drop the uncommitted mobile layout change. orch lands its work on the local main branch, so uncommitted files there will get in the way of any orch request in this repo. That is an inference, not a recorded problem.</li>
+  <li>Answer D1 to D4, then build similar collections (RC2). D5 and D6 can wait.</li>
+  <li>Later, an owner decision: the static home page (PF13). The backend <code>blocks_per_page</code> fix that once blocked it is gone <a class="src" href="#r18">[2026-summer-refactor.md:1042]</a>. The real cost is that Next 16.3.1's <code>cacheComponents</code> flag is app-wide and rejects 19 of 21 route segments that set <code>dynamic</code>, <code>revalidate</code> or <code>fetchCache</code> <a class="src" href="#r18">[discoveries, decisions 2026-08-31]</a>. Take on an app-wide migration, or drop PF13. The remaining LCP item is narrowing the image priority rule <a class="src" href="#r17">[002-performance.md]</a>.</li>
+</ol>
+<h3>Pages worth making first</h3>
+<ul>
+  <li>Row composition, at deep depth, read across both portfolio repos. Sources: the 426-line redesign spec, its flowcharts, <code>app/utils/rowCombination.md</code>, and <code>buildRows</code> at <code>rowCombination.ts:790</code> <a class="src" href="#r17">[005 spec, :279, :790]</a>.</li>
+  <li>The LCP critical review (<code>docs/superpowers/specs/002-lcp-critical-review.md</code>) at standard depth.</li>
+  <li>The D1 to D6 decision brief at standard depth.</li>
+</ul>
+<p>The docs folder has been cleaned three times since June, and the drift came back each time <a class="src" href="#r18">[frustrations 2026-06-10]</a>. Pages add files. Keep them in <code>docs/research/</code> only. Keep as Markdown: the two large boards that sessions commit against, the plans, <code>000-summary.md</code>, CLAUDE.md and the handoffs.</p>
+
+<h2 id="s-be">edens.zac.backend: September closed private-gallery leaks, and two frontend asks are still open</h2>
+<h3>Where it stands</h3>
+<p>The last commit, on 2026-09-19 (#333), added an admin bypass on the dev profile for local clients such as the Lightroom plugin. On 2026-09-15 came the passkey count on <code>/me</code> and the production relying-party guard. September also closed private-gallery leaks in anonymous read routes, across four PRs (#309, #311, #312, #313) and pinned Tomcat for three critical CVEs (#325) <a class="src" href="#r20">[git log]</a>.</p>
+<p>The cleanup tracker is still in flight. Waves 5 to 8 have open rows, two low-severity findings are open, and U-3 waits on the owner. A full-board review was set for 2026-09-08, and no commit shows it ran <a class="src" href="#r19">[18-60, :1275]</a>.</p>
+<p>Two standing risks matter for any deploy. The 8 GB EC2 disk ran out in August, the owner declined to grow it, and the margin is about 500 MB. There is no dev database: local runs tunnel to production Postgres, so a branch with a migration can migrate production <a class="src" href="#r20">[deployment handoff; frustrations 2026-08-04]</a>. Before orch's first backend request, check what its test command connects to.</p>
+<h3>What to do next</h3>
+<ol>
+  <li>The passkey deploy, after the local fixture and e2e runs, with the EC2 environment set first.</li>
+  <li>The similar-collections endpoint, once D1 to D4 are answered. The score is validated and no code exists yet.</li>
+  <li>The two asks the frontend waits on: RC3 and <code>passwordLoginAvailable</code> on GET.</li>
+  <li>Owner answers on U-3 and the disk-import trigger, then the full-board review.</li>
+</ol>
+<p>Two things are not worth product time now. A pgvector schema (D6) is not needed before the 40-line score ships. The Go rewrite is a 751-line proof of concept with no commits, kept as a starting place for interview-prep work <a class="src" href="#r20">[goals 2026-09-25, 2026-09-26]</a>.</p>
+<h3>Pages worth making first</h3>
+<ul>
+  <li>Who can see what, at deep depth. Sources: the permission-scoped, collaborator-level and waterfall design specs, <code>CollectionAccessService.java</code>, and the viewer-scoped SQL at <code>SyntheticCollectionResolver.java:134-144</code>.</li>
+  <li>Deploys and Flyway against a production-only database, at standard depth, from <code>docs/handoffs/2026-08-24-deployment-strategy.md</code>.</li>
+  <li>The typeless collection model, at brief depth, from <code>2026-07-26-typeless-collection.md</code>.</li>
+</ul>
+<p>The specs and handoffs folders are gitignored, so they exist only on this machine <a class="src" href="#r20">[.gitignore:104-105]</a>. Decide whether <code>docs/research/</code> should be tracked here. Keep as Markdown: the cleanup tracker, the plans, <code>.claude/*.md</code> and the handoffs. Fix or delete <code>todo/TODO.md</code>.</p>
+
+<h2 id="s-both">The two portfolio repos have to move together</h2>
+<p>Three pieces of work need both repos: the passkey deploy, similar collections, and the list of asks between them. A fourth, row layout, needs both repos to explain.</p>
+<figure><div class="flow">
+  <div class="node in">Task 21 fixtures<small>local docker-compose backend</small></div>
+  <div class="node in">Task 22 live e2e<small>same local backend</small></div>
+  <div class="node">EC2 env, then deploy<small>RP ID and origins first</small></div>
+  <div class="node">Signed-in checks<small>/admin and /user</small></div>
+</div>
+<figcaption>Passkey order from the #437 handoff. The backend guard refuses to start until the EC2 environment is set.</figcaption></figure>
+<p>One caution about the first two steps. The local backend tunnels to production Postgres, so the "local" e2e run writes to production rows <a class="src" href="#r18">[discoveries 2026-08-31]</a>. The order comes from the handoff <a class="src" href="#r15">[:20-26]</a>.</p>
+<p>Amplify deploys main on its own, so the frontend's passkey work is probably live. Whether the backend's is deployed is not known. <mark>Check what is live before anything else, since a live frontend against an older backend may already be broken for passkey users.</mark></p>
+<p>On similar collections, the frontend's prototype found two data gaps on 2026-08-30: public reads returned no parents, and film flags contradicted film-collection membership <a class="src" href="#r18">[mempalace 2026-08-30]</a>. The backend's git history says both were fixed: #301 fills parents on public reads, and a migration backfilled the film flag <a class="src" href="#r20">[#301, V62]</a>. The frontend's records still list them as open, and nobody has checked live data since. Re-run the score once before building the endpoint.</p>
+<p>The asks run both ways. The research notes listed S-29 and FE-2 to FE-4 as things the frontend waits on. The backend tracker says the frontend owes them <a class="src" href="#r19">[:248-276, :383]</a>.</p>
+<table>
+<tr><th>Item</th><th>Who owes it</th><th>State</th></tr>
+<tr><td>RC3: child summaries (id, name, slug, cover image) on the collection model</td><td>Backend</td><td>Open as tracker item #34. Spec in the frontend's RC3 handoff.</td></tr>
+<tr><td><code>passwordLoginAvailable</code> on the passkey GET</td><td>Backend</td><td>Open. AU2's admin half waits on it.</td></tr>
+<tr><td>FE-4, which is AU2's admin half</td><td>Frontend</td><td>Ready once the field exists.</td></tr>
+<tr><td>FE-2 and FE-3, type drift filed as frontend items C14 and C16</td><td>Frontend</td><td>Open on the backend tracker until the frontend acts.</td></tr>
+<tr><td>Cache revalidation for search, location and tag tags (frontend D15)</td><td>Frontend</td><td>Owed on deploy. S-29 itself, a leak of private images through anonymous search, was closed in #309 on 2026-09-05.</td></tr>
+<tr><td>Similar-collections endpoint</td><td>Backend</td><td>Waits on D1 to D4.</td></tr>
+</table>
+<p>Row layout needs both repos to explain. The backend stores <code>displayMode</code> and <code>rowsWide</code> on the collection model. The frontend packs rows in <code>rowCombination.ts</code>, with adjacent splits only and a blank spacer for rows under 0.9 fill <a class="src" href="#r17">[rowCombination.ts]</a>. A row-composition page must read both. It must also record that an optimal-fill design for the last row was rejected on 2026-05-26, so no one proposes it again <a class="src" href="#r18">[decisions 2026-05-26]</a>.</p>
+
+<h2 id="s-orchskill">Philosopher stays a personal skill; orch jobs cannot load it</h2>
+<p>orch reviewed ten skill repos for its catalog on 2026-10-02, six days before philosopher existed. That review rated each repo on quality, security, overlap and fit, listed what not to take, and adopted none <a class="src" href="#r12">[skill-repos-review.md:7]</a>. This page applies that review's concerns to philosopher.</p>
+<table>
+<tr><th>Concern</th><th>Philosopher</th><th>Result</th></tr>
+<tr><td>Quality: few measured claims (:8)</td><td>Token targets are stated, not measured</td><td>Same concern</td></tr>
+<tr><td>Fit: skill files of 2,000+ words cost tokens on every job (:47)</td><td>A deep page is 1,500 to 2,500 words, written on top of the bundle's instructions</td><td>Same concern</td></tr>
+<tr><td>Overlap</td><td>Overlaps only diagram-design, which the review skipped</td><td>Little overlap</td></tr>
+<tr><td>Security</td><td>No hooks or binaries. The live-fetch fallback was removed locally.</td><td>Acceptable after the local fixes</td></tr>
+</table>
+<p>So it stays a personal skill. orch jobs cannot see personal skills. They run with no setting sources, and skills reach them only through the catalog plugin. The plan says this is intended <a class="src" href="#r12">[claude-mods-skills.md:26, 88]</a>. No orch agent preloads an explaining skill today <a class="src" href="#r11">[subagents.md:94-103]</a>.</p>
+<p>Two later uses are possible, and both are design only. The <code>learn</code> workflow's lessons stage says "explain by agent or skill", and a philosopher-style step could write one page per lesson. The <code>architecture</code> workflow could render the approved <code>design.md</code> as a page beside it <a class="src" href="#r11">[domain.md:131-134]</a>. The page must sit beside the approved artifact, never replace it. Either use would need a pinned copy in the catalog, loaded by that one stage only, which avoids the per-job token cost. That is a proposal. It should wait until orch has run real requests and has an eval harness that can measure the cost.</p>
+
+<h2 id="s-run">Run it with one researcher per repo, one writer and one reviewer</h2>
+<figure><div class="flow">
+  <div class="node in">One researcher per repo<small>Sonnet, model set explicitly</small></div>
+  <div class="node">Sourced notes<small>claim, source, pointer</small></div>
+  <div class="node">One writer<small>works only from notes</small></div>
+  <div class="node fz">One reviewer<small>checks claims against files</small></div>
+</div>
+<figcaption>How a multi-repo page gets made</figcaption></figure>
+<p>Research for a page like this is judgment work: deciding what matters and which record is stale. The 2026-10-08 ruling keeps Haiku to small repeatable tasks with checkable output, so researchers run on Sonnet <a class="src" href="#r14">[decisions 2026-10-08]</a>. Name the model in each dispatch, since the same day's audit found 43% of dispatches inherit the parent's model <a class="src" href="#r14">[observations 2026-10-08]</a>. Each researcher returns notes as claim, source and pointer <a class="src" href="#r1">[local-rules.md, Research across repos]</a>. The writer works only from those notes. The reviewer opens the cited file for every claim the page leans on.</p>
+<p>This strategy paper was made this way: one research subagent per repo plus a review of the skill, then one writer, then a reviewer. The writer opened a handful of cited files and found four places where the notes and the files disagree. Two are in the table above. The third is the similar-collections data gaps. The fourth is CT D2, which a mempalace entry from 2026-09-05 lists as open and the backend tracker dismissed the same day: the method in question was deleted on 2026-07-26 and new collections default to unlisted <a class="src" href="#r19">[:314-321]</a>. The reviewer then checked about 62 claims and found more, including the passkey order and which decisions block similar collections. That rate of error is the reason the reviewer step exists.</p>
+<p>Pages go stale as the repos move. Put the date and each repo's last commit date in the eyebrow or deck. Keep pages in <code>docs/research/</code>. When the mechanism a page explains changes, delete or regenerate the page. Do not add a correction beside the old text.</p>
+
+<h2 id="s-order">One ranked order across the four repos</h2>
+<div class="tw"><table>
+<tr><th>#</th><th>What to do</th><th>Repos</th><th>Why now</th><th>Unblocks</th><th>Effort</th><th>Evidence</th></tr>
+<tr><td>1</td><td>Check what is deployed. Then finish the user/admin passkey work in order: capture the test fixtures (Task 21), run the live e2e spec (Task 22) against the local backend, which writes to production rows, set the EC2 WebAuthn env, deploy the backend, run the signed-in checks.</td><td>Backend, frontend</td><td>Merged 2026-09-15. Guard will not boot without the env. The e2e spec never ran.</td><td>The admin passkey screen (AU2) and every later backend deploy</td><td>S to M</td><td><a class="src" href="#r15">[:20-26]</a> <a class="src" href="#r20">[git log]</a></td></tr>
+<tr><td>2</td><td>Commit or drop the uncommitted mobile layout change on frontend main.</td><td>Frontend</td><td>orch lands on local main</td><td>A clean base for orch requests</td><td>S</td><td><a class="src" href="#r18">[git diff]</a></td></tr>
+<tr><td>3</td><td>Answer orch's five first-request choices and run a small frontend request. Suggestion: one of the type-drift fixes (FE-2 or FE-3). Then register the backend and send <code>passwordLoginAvailable</code> on the passkey GET as a second request.</td><td>orch, frontend, then backend</td><td>Top goal since 2026-10-04. All prerequisites built. Idle five days.</td><td>Proof orch works on a real repo; the admin passkey screen (AU2)</td><td>M</td><td><a class="src" href="#r9">[:17-25, :215-221]</a> <a class="src" href="#r14">[goals]</a></td></tr>
+<tr><td>4</td><td>Write the similar-collections decision page (standard). Answer D1 to D4; D5 and D6 can wait. Re-run the score on live data. Build the endpoint, then the similar-collections feature (RC2).</td><td>Frontend, backend</td><td>Data gaps reported fixed, score validated, no code</td><td>Similar collections v1</td><td>Page S, endpoint M</td><td><a class="src" href="#r16">[:266-269]</a></td></tr>
+<tr><td>5</td><td>Build the open-ideas commands (B5a), then run the extraction spike (B0) and the clustering spike (C0). Settle the summary budget (A3) and the dev-env cleanup (A4) alongside.</td><td>Memory</td><td>Idea extraction and the idea tree wait on the spikes. The board's next-run order is B5a, B0, C0.</td><td>Idea extraction (B1 to B4) and the idea tree (C1 to C6)</td><td>S, then M each</td><td><a class="src" href="#r3">[:393-397]</a></td></tr>
+<tr><td>6</td><td>Write the orch UI decision page (standard). Answer the eight open decisions. Add session tagging.</td><td>orch</td><td>The pane shows other sessions' requests</td><td>The standalone UI build</td><td>Page S, tagging about a day</td><td><a class="src" href="#r10">[:19, :468-474]</a></td></tr>
+<tr><td>7</td><td>Build orch's eval harness, then shadow trials.</td><td>orch</td><td>Model choices rest on rulings, not measurement</td><td>Shadow trials; measured model choice</td><td>L</td><td><a class="src" href="#r14">[observations 2026-10-08]</a></td></tr>
+<tr><td>8</td><td>Answer the access-token secret rotation story (U-3) and how disk import is triggered. Run the cleanup board's full review.</td><td>Backend</td><td>Review set for 2026-09-08 has not run</td><td>Waves 6 to 8</td><td>M</td><td><a class="src" href="#r19">[:1275]</a></td></tr>
+<tr><td>9</td><td>Fix stale docs: orch README and HANDOFF, memory README, backend README and TODO.md. Do each before that repo's first page.</td><td>All</td><td>Pages written from prose carry its errors</td><td>Accurate pages</td><td>S each</td><td><a class="src" href="#r13">[HANDOFF.md:3]</a></td></tr>
+<tr><td>10</td><td>Mechanism pages: orch architecture (deep), row composition across both repos (deep), backend access (deep), user-wing ranking (standard).</td><td>All</td><td>They explain; they do not unblock</td><td>Faster start for later sessions</td><td>S each with subagents</td><td><a class="src" href="#r17">[005 spec]</a></td></tr>
+</table></div>
+<p class="cap">Effort is a rough guess: S is hours, M is a day or two, L is several days.</p>
+<p>Rows 4 and 6 use a page to help a decision. Row 10 is the explaining work, last because it unblocks nothing. <mark>The order is driven by deploys and decisions, not by pages.</mark></p>
+
+<h2 id="s-graph">How the ideas connect</h2>
+<div class="kg">
+  <div><h4>Needs first</h4><a href="#s-run">Sourced notes per repo</a><a href="#s-kinds">Code and git over prose</a><a href="#s-briefs">Decision with trade-offs</a></div>
+  <div><h4>This topic</h4><a class="me" href="#s-short">Philosopher page</a><a href="#s-kinds">Mechanism explainer</a><a href="#s-briefs">Decision brief</a><a href="#s-order">Strategy paper</a><a href="#s-kinds">Markdown plan or tracker</a></div>
+  <div><h4>Leads to</h4><a href="#s-briefs">Owner decision answered</a><a href="#s-order">Unblocked work</a><a href="#s-run">Stale page deleted or regenerated</a><a href="#s-orchskill">orch lesson page (proposal)</a></div>
+</div>
+<table>
+<tr><th>From</th><th>Relation</th><th>To</th></tr>
+<tr><td>Philosopher page</td><td>requires</td><td>Sourced notes per repo</td></tr>
+<tr><td>Mechanism explainer</td><td>requires</td><td>Code and git over prose</td></tr>
+<tr><td>Decision brief</td><td>requires</td><td>Decision with trade-offs</td></tr>
+<tr><td>Mechanism explainer</td><td>is-a</td><td>Philosopher page</td></tr>
+<tr><td>Decision brief</td><td>is-a</td><td>Philosopher page</td></tr>
+<tr><td>Strategy paper</td><td>is-a</td><td>Philosopher page</td></tr>
+<tr><td>Philosopher page</td><td>contrasts-with</td><td>Markdown plan or tracker</td></tr>
+<tr><td>Decision brief</td><td>enables</td><td>Owner decision answered</td></tr>
+<tr><td>Owner decision answered</td><td>enables</td><td>Unblocked work</td></tr>
+<tr><td>Mechanism explainer</td><td>causes</td><td>Stale page deleted or regenerated</td></tr>
+<tr><td>Mechanism explainer</td><td>applied-in</td><td>orch lesson page (proposal)</td></tr>
+</table>
+
+<h2 id="s-limits">What this does not show</h2>
+<ul>
+  <li>Deploy state. Nobody checked what runs on EC2 or Amplify today. Row 1 starts with that check for this reason.</li>
+  <li>Most claims come from research notes. The writer opened about six files and found four disagreements, and a reviewer's check of about 62 claims found more. All found errors are fixed here. Expect a few others.</li>
+  <li>Mempalace entries record what someone believed on a date. Gaps logged on 2026-08-21 (an empty knowledge graph, zero tunnels, about 80% of drawers in the general room) have no later entry saying they were fixed <a class="src" href="#r8">[entry 2026-08-21]</a>. On 2026-10-09 mempalace still listed no tunnels, so at least that gap holds. The general room held 159,319 of about 214,600 drawers, mostly from the Lightroom export wing.</li>
+  <li>The similar-collections data fixes were not checked against live data.</li>
+  <li>Whether the backend's old <code>user_collection</code> table still exists was not checked.</li>
+  <li>No web sources were used. Nothing about upstream philosopher after 2026-10-08 is covered.</li>
+  <li>Effort estimates are guesses. The suggested first orch request is a suggestion, not a recorded plan.</li>
+</ul>
+
+<h2 id="refs">References</h2>
+<ol class="refs">
+  <li id="r1"><span class="t">Philosopher install: ~/.claude/skills/philosopher (SKILL.md, okf/core/local-rules.md, okf/domains/project-strategy.md)</span><span class="d">The pinned clone, the local branch, the update path, the local overrides, and the rule of one research subagent per repo. Git log on the local branch, 2026-10-09.</span></li>
+  <li id="r2"><a class="t" href="https://github.com/frypan05/philosopher-OKF">Upstream philosopher-OKF repository</a><span class="d">Created 2026-10-08 by one GitHub account (two author names appear in git log, probably the same person), 11 commits at review. README (install path, unmeasured token targets), okf/index.md, okf/core/workflow.md and audience-depth.md (depth budgets). Validator and single-file build run on 2026-10-09.</span></li>
+  <li id="r3"><a class="t" href="../superpowers/specs/2026-10-02-user-wing-ideas-design.md">Memory: user-wing ideas design and build-order board</a><span class="d">Phase A shipped (:3, :69-116); the status board with A3, A4, B0, C0, B5a and B6 (:358-383); the entry counts behind B0 and C0 (:52-61); the next-run order B5a, B0, C0 (:393-397); the restated-idea decision (:420-424).</span></li>
+  <li id="r4"><a class="t" href="../MR-fs-gate.md">Memory: filesystem gate write-up and protocol audit tracker</a><span class="d">How the gate reads the transcript (MR-fs-gate.md:1-20); the 82% baseline, 244 of 297 batches (protocol-audit-tracker.md:21).</span></li>
+  <li id="r5"><a class="t" href="../superpowers/specs/2026-10-01-short-term-context-design.md">Memory: short-term context design</a><span class="d">Status is draft for review, not approved (:3).</span></li>
+  <li id="r6"><a class="t" href="../../src/user_wing.py">Memory: src/user_wing.py</a><span class="d">Dedup threshold and revision lines (:25-27, :96); summary budget (:30-41, :390-430); recency-weighted search ranking (:268-336).</span></li>
+  <li id="r7"><a class="t" href="../2026-05-06-handoff.md">Memory: 2026-05-06 handoff, README and git history</a><span class="d">What is built (handoff:30-45); the older hierarchy line (README.md:13); recent commits on the health route watchdog, tini, the mempalace 3.6.0 pin, the mcp version cap and the personal-tagging script; main last changed 2026-10-01, docs branch 2026-10-02.</span></li>
+  <li id="r8"><span class="t">Mempalace user-wing entries about memory</span><span class="d">Decisions 2026-08-22 (no git remote); observations 2026-10-04 (stores split, memory-map proposal); discoveries 2026-10-04 (auto-memory still written); an entry dated 2026-08-21 listing gaps (hall not recorded in the notes). Tunnel lists checked empty on 2026-10-09.</span></li>
+  <li id="r9"><span class="t">~/Code/agent-orchestrator/docs/plans/2026-10-04-any-repo.md</span><span class="d">Plan status, what was built and the unregistered backend (:3, :44-51); the frontend as the first request (:17-25); the decisions of 2026-10-04 and the five open choices for the first request (:205-221).</span></li>
+  <li id="r10"><span class="t">~/Code/agent-orchestrator/docs/plans/2026-10-04-orch-app-ui.md and the 2026-10-02 proposal plans</span><span class="d">The standalone UI is a proposal with nothing built (:3); the owner decisions, eight still open after the any-repo plan settled where configs live ("What the owner must decide"); stale pane and session tagging (:19, :468-474); house rules, shadow trials, security reviewer, mempalace context and light workflows are proposals (each plan's line 3).</span></li>
+  <li id="r11"><span class="t">~/Code/agent-orchestrator/design/application/domain.md and design/subagents.md</span><span class="d">What the engine has built (domain.md:48-125); spike, learn and architecture stages (:131-134); artifacts carry sha256 hashes and approvals bind to them (:183, :207); agent loadouts (subagents.md:94-103); the model-ladder rung lookup on main (src/orch/domain/catalog.py:343).</span></li>
+  <li id="r12"><span class="t">~/Code/agent-orchestrator/docs/plans/2026-10-02-claude-mods-skills.md and 2026-10-02-skill-repos-review.md</span><span class="d">Jobs do not load personal skills; skills arrive through the catalog plugin (claude-mods-skills.md:19, :26, :88). The review's quality, security, overlap and fit columns and "adopt none" result (skill-repos-review.md:7); few measured claims (:8); long skill files cost tokens on every job (:47).</span></li>
+  <li id="r13"><span class="t">~/Code/agent-orchestrator: README.md, HANDOFF.md, shadow-trials plan and git history</span><span class="d">HANDOFF says nothing is built, dated 2026-09-20 (HANDOFF.md:3); README ranks it first (README.md:7); the offline model playbook (README.md:15, HANDOFF.md:424-432); shadow trials depend on the eval harness (docs/plans/2026-10-02-shadow-trials.md:159); last commit 2026-10-04 made drafts land on local main; the model-ladders branch has no commits main lacks; a demo branch (2 commits) and a send-back retry branch (1 commit) are unmerged.</span></li>
+  <li id="r14"><span class="t">Mempalace user-wing entries about orch</span><span class="d">Goals 2026-10-04 (orch usable in any repo); goals 2026-10-02 (workflow catalog, eval harness); decisions 2026-10-08 (Haiku ruling); observations 2026-10-08 (43% of dispatches inherit the parent model).</span></li>
+  <li id="r15"><span class="t">~/Code/edens.zac/docs/handoffs/2026-09-15-user-admin-consolidation-handoff.md</span><span class="d">Work owed after #437 and its order (:20-26): Task 21 fixtures and Task 22 live e2e against the local docker-compose backend, then the EC2 environment, backend deploy and signed-in checks; test counts at handoff.</span></li>
+  <li id="r16"><span class="t">~/Code/edens.zac/docs/spikes/2026-features.md</span><span class="d">D1 to D6, with D1 to D4 blocking RC2 and D6 blocking RC5 (:266-269); the recommendation (:518-524, and docs/spikes/2026-features/rc-similar-collections.md:122-134); AU2 needs only <code>passwordLoginAvailable</code> on GET (:302-330); the open decision table, last updated 2026-09-06 (:401-432).</span></li>
+  <li id="r17"><span class="t">~/Code/edens.zac row composition and performance docs</span><span class="d">docs/superpowers/specs/005-row-composition-redesign.md and its flowcharts file; app/utils/rowCombination.md; app/utils/rowCombination.ts (isSoloHero :279, buildRows :790, blank spacer under 0.9 fill); docs/002-performance.md (LCP priority rule).</span></li>
+  <li id="r18"><span class="t">~/Code/edens.zac git history, working tree and mempalace entries</span><span class="d">Commits #396 to #437 (lint rule #414, docblock exemption #417); the uncommitted two-tiles-per-row change in app/constants/index.ts; Amplify auto-deploy (CLAUDE.md); docs/spikes/2026-summer-refactor.md:1042 (blocks_per_page fix gone). Mempalace edens-zac entries: 2026-08-30 (prototype and data gaps); discoveries and decisions 2026-08-31 (cacheComponents cost; local backend tunnels to production); decisions 2026-05-26 (optimal-fill design rejected); frustrations 2026-06-10 (docs drift).</span></li>
+  <li id="r19"><span class="t">~/Code/edens.zac.backend/ai_docs/reviews/2026-08-22-backend-cleanup-spike.md</span><span class="d">Board summary (:18-67); RC3 as item #34 (:236-237); FE-2 to FE-4 owed to the frontend, FE-4 is AU2 (:248-276); reply to the frontend dismissing CT D2 (:314-321); S-29 closed in #309 (:383); disk import question (:1118); the unrun full-board review (:1275).</span></li>
+  <li id="r20"><span class="t">~/Code/edens.zac.backend git history, deployment handoff and mempalace entries</span><span class="d">Commits #301 to #333 and migration V62; docs/handoffs/2026-08-24-deployment-strategy.md (disk margin); .gitignore:104-105; README and todo/TODO.md drift; mempalace frustrations 2026-08-04 (no dev database); goals 2026-09-25 and 2026-09-26 (Go repo as an interview-prep starting place); an entry from 2026-09-25 (Spring version).</span></li>
+</ol>
+<footer>Generated by phil-OKF · 2026-10-09</footer>
+</div></div></body></html>
