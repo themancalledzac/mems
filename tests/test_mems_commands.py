@@ -160,19 +160,8 @@ def test_status_calls_memory_sync_status(monkeypatch, capsys):
 # --- 4. search: correct tool + args ------------------------------------------
 
 
-def test_search_wing_calls_mempalace_search(monkeypatch, capsys):
-    return_value = {
-        "structuredContent": {
-            "drawers": [
-                {
-                    "document": "the matching content",
-                    "distance": 0.1,
-                    "metadata": {"wing": "foo", "room": "bar", "source_path": "x.py"},
-                }
-            ]
-        }
-    }
-    _install_fake_palace(monkeypatch, return_value=return_value)
+def test_search_wing_calls_mempalace_search(monkeypatch):
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"results": []}})
 
     assert main(["search", "my query", "--wing", "foo"]) == 0
 
@@ -181,13 +170,26 @@ def test_search_wing_calls_mempalace_search(monkeypatch, capsys):
     assert calls[0][1]["query"] == "my query"
     assert calls[0][1]["wing"] == "foo"
 
+
+def test_search_human_output_shows_path_and_snippet(monkeypatch, capsys):
+    hit = {
+        "text": "the matching content",
+        "source_path": "/repos/Memory/src/x.py",
+        "distance": 0.1,
+        "wing": "memory",
+    }
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"results": [hit]}})
+
+    assert main(["search", "my query", "--wing", "memory"]) == 0
+
     out = capsys.readouterr().out
-    assert "x.py" in out
+    assert "src/x.py" in out
     assert "the matching content" in out
+    assert "?" not in out.splitlines()[0].split("(")[0]
 
 
 def test_search_without_wing_calls_search_all(monkeypatch):
-    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"drawers": []}})
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"results": []}})
     assert main(["search", "something"]) == 0
     calls = _FakePalaceClient.last_instance.calls
     assert calls[0][0] == "mempalace_search_all"

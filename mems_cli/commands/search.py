@@ -5,12 +5,15 @@ from __future__ import annotations
 import argparse
 import sys
 
-from mems_cli.common import extract_tool_result, print_json
+from mems_cli.common import (
+    EXIT_OK,
+    EXIT_SERVER_ERROR,
+    EXIT_USER_ERROR,
+    extract_tool_result,
+    print_json,
+)
+from mems_cli.eval_scoring import normalize_hit
 from mems_cli.palace_client import PalaceClient, PalaceClientError
-
-EXIT_OK = 0
-EXIT_USER_ERROR = 1
-EXIT_SERVER_ERROR = 2
 
 VALID_HALLS = {"questions", "discoveries", "frustrations", "goals", "decisions", "observations"}
 
@@ -54,35 +57,17 @@ def _call(tool: str, args: dict | None = None):
 
 
 def _print_search_results(data, as_json: bool) -> None:
-    if as_json:
+    if as_json or not isinstance(data, dict) or not isinstance(data.get("results"), list):
         print_json(data)
         return
 
-    # search_memories returns {"drawers": [...], "closets": [...], ...}.
-    # Each item typically has distance, document, metadata.
-    if not isinstance(data, dict):
-        print_json(data)
-        return
-
-    blocks = []
-    for key in ("drawers", "closets", "results"):
-        if key in data and isinstance(data[key], list):
-            for hit in data[key]:
-                blocks.append((key, hit))
-
-    if not blocks:
-        # Fallback: dump the whole thing.
-        print_json(data)
-        return
-
-    for source, hit in blocks:
-        meta = hit.get("metadata") or {}
+    for hit in data["results"]:
+        path, text = normalize_hit(hit)
+        label = path or hit.get("id") or hit.get("wing") or "?"
         distance = hit.get("distance")
         score = f"{1.0 - distance:.3f}" if isinstance(distance, (int, float)) else "?"
-        path = meta.get("source_path") or meta.get("path") or meta.get("wing", "?")
-        content = (hit.get("document") or hit.get("content") or "").strip()
-        snippet = content[:180].replace("\n", " ")
-        print(f"[{source}] ({score})  {path}")
+        snippet = text.strip()[:180].replace("\n", " ")
+        print(f"({score})  {label}")
         print(f"  {snippet}")
         print()
 
