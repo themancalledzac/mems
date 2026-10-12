@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from mempalace.miner import GitignoreMatcher
+from mempalace.palace import get_closets_collection, get_collection
 
 from src.sync_engine import (
     SyncEngine,
@@ -13,6 +14,7 @@ from src.sync_engine import (
     get_changed_files,
     get_head_sha,
     list_indexable_files,
+    prune_wing,
 )
 
 
@@ -411,3 +413,217 @@ class TestListIndexableFiles:
         (plain / "a.md").write_text("x")
         with pytest.raises(SyncSourceError, match="(?i)not a git repository"):
             list_indexable_files(str(plain), {})
+
+    def test_indexable_wraps_git_launch_failure(self, tmp_path):
+        with patch("src.sync_engine.subprocess.run", side_effect=FileNotFoundError("git")):
+            with pytest.raises(SyncSourceError, match="git"):
+                list_indexable_files(str(tmp_path), {})
+
+    def test_indexable_wraps_git_timeout(self, tmp_path):
+        timeout = subprocess.TimeoutExpired(cmd="git", timeout=30)
+        with patch("src.sync_engine.subprocess.run", side_effect=timeout) as run:
+            with pytest.raises(SyncSourceError):
+                list_indexable_files(str(tmp_path), {})
+        assert run.call_args.kwargs["timeout"] == 30
+
+    def test_indexable_accepts_missing_sync_block(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "a.md").write_text("x")
+        assert _rel(repo, list_indexable_files(str(repo), None)) == ["a.md"]
+
+
+def _drawers(collection, rows):
+    """Add (id, metadata) rows to a real Chroma collection with fixed embeddings."""
+    for start in range(0, len(rows), 500):
+        chunk = rows[start : start + 500]
+        collection.add(
+            ids=[r[0] for r in chunk],
+            documents=["doc"] * len(chunk),
+            metadatas=[r[1] for r in chunk],
+            embeddings=[[0.1, 0.2, 0.3]] * len(chunk),
+        )
+
+
+def _ids(collection):
+    return sorted(collection.get(include=[])["ids"])
+
+
+@pytest.fixture
+def prune_env(tmp_path, tmp_palace):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    collection = get_collection(str(tmp_palace))
+    return repo, collection
+
+
+def _meta(wing, source=None, room="general"):
+    meta = {"wing": wing, "room": room}
+    if source is not None:
+        meta["source_file"] = str(source)
+    return meta
+
+
+class TestPruneWing:
+    def test_prune_removes_untracked_source(self, prune_env):
+        repo, col = prune_env
+        _drawers(col, [("a", _meta("w", repo / "a.md")), ("b", _meta("w", repo / "build/out.md"))])
+        report = prune_wing(col, "w", str(repo), {str(repo / "a.md")})
+        assert report["status"] == "ok"
+        assert report["removed"] == 1
+        assert _ids(col) == ["a"]
+
+    def test_prune_removes_drawers_for_deleted_files(self, prune_env):
+        repo, col = prune_env
+        _drawers(
+            col,
+            [
+                ("gone1", _meta("w", repo / "gone.md")),
+                ("gone2", _meta("w", repo / "gone.md")),
+                ("here", _meta("w", repo / "here.md")),
+            ],
+        )
+        report = prune_wing(col, "w", str(repo), {str(repo / "here.md")})
+        assert report["removed"] == 2
+        assert report["top_sources"][0] == {"source_file": str(repo / "gone.md"), "drawers": 2}
+        assert _ids(col) == ["here"]
+
+    def test_prune_keeps_drawers_without_source_file(self, prune_env):
+        repo, col = prune_env
+        _drawers(col, [("nosrc", _meta("w")), ("a", _meta("w", repo / "a.md"))])
+        report = prune_wing(col, "w", str(repo), {str(repo / "a.md")})
+        assert report["no_source"] == 1
+        assert report["removed"] == 0
+        assert _ids(col) == ["a", "nosrc"]
+
+    def test_prune_never_touches_other_wings(self, prune_env):
+        repo, col = prune_env
+        _drawers(
+            col,
+            [
+                ("u", _meta("user", repo / "old.md")),
+                ("ci", _meta("claude_imports", repo / "old.md")),
+                ("w", _meta("w", repo / "old.md")),
+                ("keep", _meta("w", repo / "a.md")),
+            ],
+        )
+        report = prune_wing(col, "w", str(repo), {str(repo / "a.md")})
+        assert report["scanned"] == 2
+        assert _ids(col) == ["ci", "keep", "u"]
+
+    def test_prune_keeps_source_outside_repo_path(self, prune_env, tmp_path):
+        repo, col = prune_env
+        sibling = tmp_path / "repo-other" / "x.md"
+        _drawers(
+            col,
+            [
+                ("out", _meta("w", sibling)),
+                ("abs", _meta("w", "/elsewhere/y.md")),
+                ("a", _meta("w", repo / "a.md")),
+            ],
+        )
+        report = prune_wing(col, "w", str(repo), {str(repo / "a.md")})
+        assert report["out_of_scope"] == 2
+        assert _ids(col) == ["a", "abs", "out"]
+
+    def test_prune_skips_registry_rows(self, prune_env):
+        repo, col = prune_env
+        _drawers(
+            col,
+            [
+                ("_reg_w", _meta("w", repo / "gone.md")),
+                ("r1", _meta("w", repo / "gone.md", room="_registry")),
+                ("a", _meta("w", repo / "a.md")),
+            ],
+        )
+        report = prune_wing(col, "w", str(repo), {str(repo / "a.md")})
+        assert report["removed"] == 0
+        assert _ids(col) == ["_reg_w", "a", "r1"]
+
+    def test_prune_dry_run_deletes_nothing(self, prune_env):
+        repo, col = prune_env
+        _drawers(col, [("a", _meta("w", repo / "a.md")), ("b", _meta("w", repo / "b.md"))])
+        live = prune_wing(col, "w", str(repo), {str(repo / "a.md")}, dry_run=True)
+        assert live["status"] == "ok"
+        assert live["removed"] == 1
+        assert _ids(col) == ["a", "b"]
+
+    def test_prune_pages_past_1000(self, prune_env):
+        repo, col = prune_env
+        rows = [(f"k{i}", _meta("w", repo / f"k{i}.md")) for i in range(1300)]
+        rows += [(f"g{i}", _meta("w", repo / f"g{i}.md")) for i in range(200)]
+        _drawers(col, rows)
+        keep = {str(repo / f"k{i}.md") for i in range(1300)}
+        report = prune_wing(col, "w", str(repo), keep)
+        assert report["scanned"] == 1500
+        assert report["removed"] == 200
+        assert col.count() == 1300
+
+    def test_prune_blocked_above_threshold(self, prune_env):
+        repo, col = prune_env
+        rows = [(f"g{i}", _meta("w", repo / f"g{i}.md")) for i in range(250)]
+        rows += [(f"k{i}", _meta("w", repo / f"k{i}.md")) for i in range(50)]
+        _drawers(col, rows)
+        keep = {str(repo / f"k{i}.md") for i in range(50)}
+        report = prune_wing(col, "w", str(repo), keep)
+        assert report["status"] == "blocked"
+        assert report["removed"] == 0
+        assert "250" in report["reason"]
+        assert "mems sync --allow-large-prune" in report["reason"]
+        assert col.count() == 300
+
+    def test_prune_below_threshold_applies(self, prune_env):
+        repo, col = prune_env
+        rows = [(f"g{i}", _meta("w", repo / f"g{i}.md")) for i in range(150)]
+        rows += [(f"k{i}", _meta("w", repo / f"k{i}.md")) for i in range(50)]
+        _drawers(col, rows)
+        keep = {str(repo / f"k{i}.md") for i in range(50)}
+        report = prune_wing(col, "w", str(repo), keep)
+        assert report["status"] == "ok"
+        assert col.count() == 50
+
+    def test_prune_blocked_when_keep_empty(self, prune_env):
+        repo, col = prune_env
+        _drawers(col, [("a", _meta("w", repo / "a.md"))])
+        report = prune_wing(col, "w", str(repo), set())
+        assert report["status"] == "blocked"
+        assert "mems sync --allow-large-prune" in report["reason"]
+        assert _ids(col) == ["a"]
+
+    def test_prune_allow_large_applies(self, prune_env, tmp_palace):
+        repo, col = prune_env
+        closets = get_closets_collection(str(tmp_palace))
+        rows = [(f"g{i}", _meta("w", repo / f"g{i}.md")) for i in range(250)]
+        rows += [(f"k{i}", _meta("w", repo / f"k{i}.md")) for i in range(50)]
+        _drawers(col, rows)
+        _drawers(
+            closets,
+            [
+                ("c-gone", _meta("w", repo / "g0.md")),
+                ("c-keep", _meta("w", repo / "k0.md")),
+                ("c-other", _meta("user", repo / "g0.md")),
+            ],
+        )
+        keep = {str(repo / f"k{i}.md") for i in range(50)}
+        report = prune_wing(col, "w", str(repo), keep, allow_large=True, closets=closets)
+        assert report["status"] == "ok"
+        assert report["removed"] == 250
+        assert col.count() == 50
+        assert _ids(closets) == ["c-keep", "c-other"]
+
+    def test_prune_skipped_when_repo_missing(self, prune_env, tmp_path):
+        _, col = prune_env
+        _drawers(col, [("a", _meta("w", tmp_path / "nope" / "a.md"))])
+        report = prune_wing(col, "w", str(tmp_path / "nope"), {"x"})
+        assert report["status"] == "skipped"
+        assert _ids(col) == ["a"]
+
+    def test_prune_error_never_raises(self, prune_env):
+        repo, _ = prune_env
+
+        class Broken:
+            def get(self, **kwargs):
+                raise RuntimeError("boom")
+
+        report = prune_wing(Broken(), "w", str(repo), {"x"})
+        assert report["status"] == "error"
+        assert "boom" in report["reason"]

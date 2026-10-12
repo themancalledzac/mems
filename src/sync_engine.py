@@ -2,6 +2,8 @@
 
 import json
 import subprocess
+import os
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +18,13 @@ from mempalace.miner import (
     should_skip_dir,
 )
 from mempalace.palace import get_collection
+
+
+GIT_TIMEOUT_S = 30
+PRUNE_BATCH = 1000
+LARGE_PRUNE_FRACTION = 0.5
+LARGE_PRUNE_MIN = 200
+LARGE_PRUNE_OVERRIDE = "mems sync --allow-large-prune"
 
 
 class SyncSourceError(Exception):
@@ -35,16 +44,22 @@ def _flatten_rooms(wing_def: dict) -> list:
 def list_indexable_files(repo_path: str, sync_cfg: dict) -> list[Path]:
     """Files to keep for a wing: git ls-files -z --cached --others --exclude-standard, filtered.
 
-    Raises SyncSourceError when git fails. Paths are `Path(repo_path) / rel` and are
+    Raises SyncSourceError when git fails, is missing or times out. A None `sync_cfg`
+    means no `sync:` block in the config. Paths are `Path(repo_path) / rel` and are
     never resolved, so they match stored `source_file` values.
     """
-    result = subprocess.run(
-        ["git", "-C", repo_path, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-        capture_output=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_path, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            capture_output=True,
+            timeout=GIT_TIMEOUT_S,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SyncSourceError(f"git ls-files failed for {repo_path}: {exc}") from exc
     if result.returncode != 0:
         raise SyncSourceError(result.stderr.decode("utf-8", errors="replace").strip())
 
+    sync_cfg = sync_cfg or {}
     root = Path(repo_path)
     exclude = sync_cfg.get("exclude") or []
     exclude_matcher = GitignoreMatcher.from_patterns(root, exclude) if exclude else None
@@ -79,6 +94,115 @@ def list_indexable_files(repo_path: str, sync_cfg: dict) -> list[Path]:
             continue
         files.append(path)
     return files
+
+
+
+def _prune_report(status: str, reason: str = "", **counts) -> dict:
+    report = {
+        "status": status,
+        "scanned": 0,
+        "removed": 0,
+        "kept": 0,
+        "no_source": 0,
+        "out_of_scope": 0,
+        "top_sources": [],
+        "reason": reason,
+    }
+    report.update(counts)
+    return report
+
+
+def prune_wing(
+    collection,
+    wing: str,
+    repo_path: str,
+    keep: set[str],
+    *,
+    dry_run: bool = False,
+    allow_large: bool = False,
+    closets=None,
+) -> dict:
+    """Delete this wing's drawers whose `source_file` is under `repo_path` but not in `keep`.
+
+    Drawers with no source, sources outside the repo, and registry rows are kept. Refuses
+    (status `blocked`) when `keep` is empty or the removal is large, unless `allow_large`.
+    Never raises; failures come back as status `error`. Closets for removed files in this
+    wing are purged when `closets` is given.
+    """
+    try:
+        if not os.path.isdir(repo_path):
+            return _prune_report("skipped", f"repo path not found: {repo_path}")
+
+        prefix = os.path.normpath(repo_path) + "/"
+        scanned = no_source = out_of_scope = 0
+        doomed: list[str] = []
+        doomed_sources: Counter = Counter()
+        offset = 0
+        while True:
+            page = collection.get(
+                where={"wing": wing}, include=["metadatas"], limit=PRUNE_BATCH, offset=offset
+            )
+            ids = page["ids"] or []
+            if not ids:
+                break
+            for drawer_id, meta in zip(ids, page["metadatas"] or [{}] * len(ids)):
+                scanned += 1
+                meta = meta or {}
+                source = meta.get("source_file")
+                if not source:
+                    no_source += 1
+                elif not source.startswith(prefix):
+                    out_of_scope += 1
+                elif meta.get("room") == "_registry" or drawer_id.startswith("_reg_"):
+                    continue
+                elif source not in keep:
+                    doomed.append(drawer_id)
+                    doomed_sources[source] += 1
+            if len(ids) < PRUNE_BATCH:
+                break
+            offset += PRUNE_BATCH
+
+        counts = {
+            "scanned": scanned,
+            "no_source": no_source,
+            "out_of_scope": out_of_scope,
+            "top_sources": [
+                {"source_file": src, "drawers": n} for src, n in doomed_sources.most_common(10)
+            ],
+        }
+        if not allow_large:
+            reason = ""
+            if not keep and scanned:
+                reason = f"keep list is empty; {len(doomed)} of {scanned} drawers would be removed"
+            elif len(doomed) > LARGE_PRUNE_MIN and len(doomed) > scanned * LARGE_PRUNE_FRACTION:
+                reason = f"prune would remove {len(doomed)} of {scanned} drawers"
+            if reason:
+                return _prune_report(
+                    "blocked",
+                    f"{reason}; run `{LARGE_PRUNE_OVERRIDE}` to apply it",
+                    kept=scanned,
+                    **counts,
+                )
+
+        if not dry_run:
+            for start in range(0, len(doomed), PRUNE_BATCH):
+                collection.delete(ids=doomed[start : start + PRUNE_BATCH])
+            sources = list(doomed_sources)
+            if closets is not None:
+                for start in range(0, len(sources), PRUNE_BATCH):
+                    closets.delete(
+                        where={
+                            "$and": [
+                                {"wing": wing},
+                                {"source_file": {"$in": sources[start : start + PRUNE_BATCH]}},
+                            ]
+                        }
+                    )
+        return _prune_report(
+            "ok", removed=len(doomed), kept=scanned - len(doomed), dry_run=dry_run, **counts
+        )
+    except Exception as exc:
+        return _prune_report("error", f"{type(exc).__name__}: {exc}")
 
 
 class SyncLedger:
