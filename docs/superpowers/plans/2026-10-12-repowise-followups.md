@@ -632,7 +632,7 @@ The matcher is `startup|clear` and the settings timeout is 5.
 | I3 stage 2: own FTS5 leg, filename leg, RRF | MR-4's eval still misses identifier or filename questions that a rank-sorted FTS query finds |
 | I6: `paths` field on user-wing writes | MR-7 is live and the owner wants "decisions about files I'm touching". Fill it from orch and the Phase B sweeper only, and never show a staleness label. |
 | Retag 30 user-wing entries with mismatched `source_wing` (`lightroom-portfolio-export`, `edens.zac`, `edens.zac.backend`) | Any time. Take a snapshot first and do a dry run. |
-| Delete `/data/palace.backup` (June, 612 MB) and `/data/palace.pre-rebuild-20260623-000314` | After OP-1 is verified |
+| Delete `/data/palace.backup` (June, 612 MB) and `/data/palace.pre-rebuild-20260623-000314` | Done. Deleted on 2026-10-12 with the server stopped. |
 | Upstream issue for the lexical search's missing `ORDER BY rank` and `LIMIT` | With MR-4 |
 | Remove the stale worktree `.claude/worktrees/text-component-padding-cd1216` | Check who created it first |
 

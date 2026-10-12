@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from mempalace.miner import GitignoreMatcher
 from mempalace.miner import process_file as real_process_file
 from mempalace.palace import get_closets_collection, get_collection
 
@@ -324,10 +323,6 @@ class TestListIndexableFiles:
         assert all(f.is_file() for f in files)
         assert all(str(f).startswith(str(repo) + "/") for f in files)
 
-    @pytest.mark.skipif(
-        not hasattr(GitignoreMatcher, "from_patterns"),
-        reason="GitignoreMatcher.from_patterns needs mempalace >= 3.6.0",
-    )
     def test_indexable_config_exclude_patterns(self, tmp_path):
         repo = _init_repo(tmp_path / "r")
         (repo / ".claude" / ".cc-writes").mkdir(parents=True)
