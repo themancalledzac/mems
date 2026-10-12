@@ -675,6 +675,41 @@ class TestStatusRecentTopics:
         assert "guidance" in status
 
 
+class TestSearchScoping:
+    def test_search_scoped_finds_minority_wing_entries(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        for i in range(40):
+            _put(wing, f"release checklist item {i}", source_wing="wing-a")
+        small = {
+            _put(wing, "release checklist for the small repo", source_wing="wing-b"),
+            _put(wing, "release checklist small repo notes", source_wing="wing-b"),
+        }
+        hits = wing.search(query="release checklist", source_wing="wing-b", include_unscoped=False)[
+            "results"
+        ]
+        assert {r["id"] for r in hits} == small
+
+    def test_search_scoped_with_unscoped_returns_both(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        for i in range(40):
+            _put(wing, f"release checklist item {i}", source_wing="wing-a")
+        scoped = _put(wing, "release checklist for the small repo", source_wing="wing-b")
+        free = _put(wing, "release checklist with no wing")
+        hits = wing.search(query="release checklist", source_wing="wing-b")["results"]
+        assert {r["id"] for r in hits} == {scoped, free}
+        assert [r["effective_distance"] for r in hits] == sorted(
+            r["effective_distance"] for r in hits
+        )
+
+    def test_search_unscoped_covers_empty_string_wing(self, tmp_palace):
+        wing = UserWing(palace_path=str(tmp_palace))
+        for i in range(40):
+            _put(wing, f"release checklist item {i}", source_wing="wing-a")
+        empty = _put(wing, "release checklist blank wing", source_wing="")
+        hits = wing.search(query="release checklist", source_wing="wing-b")["results"]
+        assert {r["id"] for r in hits} == {empty}
+
+
 class TestOrchCallsSkipPersonal:
     """orch scopes every read to its repo wing with include_personal=False."""
 

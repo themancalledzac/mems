@@ -281,58 +281,68 @@ class UserWing:
         """Semantic search across the user wing, re-ranked by recency.
 
         `effective_distance = distance + recency_weight * min(age_days / 30, 1)`, with age
-        measured from `last_seen`. Filters run in Python over an over-fetched candidate set.
+        measured from `last_seen`. The `source_wing` scope is applied inside Chroma, so small
+        wings are found; the other filters run in Python over an over-fetched candidate set.
         """
-        where_conditions = [{"wing": "user"}]
+        base = [{"wing": "user"}]
         if hall:
-            where_conditions.append({"hall": hall})
+            base.append({"hall": hall})
         if topic:
-            where_conditions.append({"topic": topic})
+            base.append({"topic": topic})
 
-        if len(where_conditions) > 1:
-            where = {"$and": where_conditions}
+        scopes: list[dict] = []
+        if source_wing is None:
+            scopes.append({})
         else:
-            where = where_conditions[0]
+            scopes.append({"source_wing": source_wing})
+            if include_unscoped:
+                scopes.append(self._unscoped_clause())
 
-        try:
-            results = self.collection.query(
-                query_texts=[query],
-                n_results=min(max(n_results * 3, 30), 100),
-                where=where,
-            )
-        except Exception:
-            return {"query": query, "results": []}
-
-        if not results or not results.get("ids") or not results["ids"][0]:
-            return {"query": query, "results": []}
-
+        limit = min(max(n_results * 3, 30), 100)
         now_epoch = datetime.now(timezone.utc).timestamp()
         since = _since_epoch(since_days)
-        metadatas = results.get("metadatas") or [[]]
-        distances = results.get("distances") or [[]]
-        formatted = []
-        for i, doc_id in enumerate(results["ids"][0]):
-            meta = metadatas[0][i] if i < len(metadatas[0]) else {}
-            meta = meta or {}
-            if not _keep(
-                meta,
-                since_epoch=since,
-                source_wing=source_wing,
-                include_unscoped=include_unscoped,
-                status=status,
-                include_personal=include_personal,
-            ):
+        found: dict[str, dict] = {}
+        for scope in scopes:
+            conditions = base + ([scope] if scope else [])
+            where = {"$and": conditions} if len(conditions) > 1 else conditions[0]
+            try:
+                results = self.collection.query(query_texts=[query], n_results=limit, where=where)
+            except Exception:
                 continue
-            dist = distances[0][i] if i < len(distances[0]) else None
-            age_days = max(now_epoch - _last_seen_epoch(meta), 0.0) / SECONDS_PER_DAY
-            effective = (dist or 0.0) + recency_weight * min(age_days / RECENCY_HORIZON_DAYS, 1.0)
-            entry = _format_entry(doc_id, results["documents"][0][i], meta)
-            entry["distance"] = dist
-            entry["effective_distance"] = effective
-            formatted.append(entry)
+            if not results or not results.get("ids") or not results["ids"][0]:
+                continue
+            metadatas = results.get("metadatas") or [[]]
+            distances = results.get("distances") or [[]]
+            for i, doc_id in enumerate(results["ids"][0]):
+                meta = (metadatas[0][i] if i < len(metadatas[0]) else {}) or {}
+                if not _keep(
+                    meta,
+                    since_epoch=since,
+                    source_wing=source_wing,
+                    include_unscoped=include_unscoped,
+                    status=status,
+                    include_personal=include_personal,
+                ):
+                    continue
+                dist = distances[0][i] if i < len(distances[0]) else None
+                age_days = max(now_epoch - _last_seen_epoch(meta), 0.0) / SECONDS_PER_DAY
+                effective = (dist or 0.0) + recency_weight * min(
+                    age_days / RECENCY_HORIZON_DAYS, 1.0
+                )
+                entry = _format_entry(doc_id, results["documents"][0][i], meta)
+                entry["distance"] = dist
+                entry["effective_distance"] = effective
+                found[doc_id] = entry
 
-        formatted.sort(key=lambda e: (e["effective_distance"], e["id"]))
+        formatted = sorted(found.values(), key=lambda e: (e["effective_distance"], e["id"]))
         return {"query": query, "results": formatted[:n_results]}
+
+    def _unscoped_clause(self) -> dict:
+        """Chroma filter for user entries with no `source_wing` (key missing or empty)."""
+        named = sorted(
+            {meta["source_wing"] for _, meta in self._user_metadata() if meta.get("source_wing")}
+        )
+        return {"source_wing": {"$nin": named}} if named else {}
 
     def recent(
         self,
@@ -510,7 +520,7 @@ class UserWing:
             meta = results["metadatas"][i].copy()
             content = results["documents"][i]
 
-            dup = self._find_duplicate_in_topic(target_topic, content, meta.get("hall"))
+            dup = self._find_duplicate(meta.get("hall"), content, topic=target_topic)
             if dup:
                 self.collection.delete(ids=[drawer_id])
                 deduped += 1
@@ -523,8 +533,7 @@ class UserWing:
                 )
                 merged += 1
 
-        remaining = merged
-        return {"merged": merged, "deduped": deduped, "remaining": remaining}
+        return {"merged": merged, "deduped": deduped, "remaining": merged}
 
     def prune(
         self,
@@ -533,7 +542,7 @@ class UserWing:
         older_than_days: int = 90,
         dry_run: bool = True,
     ) -> dict:
-        """Remove stale/low-value thoughts by age, similarity, or cluster."""
+        """Remove thoughts whose `timestamp` is older than `older_than_days`. Dry run by default."""
         where_conditions = [{"wing": "user"}]
         if hall:
             where_conditions.append({"hall": hall})
@@ -571,43 +580,23 @@ class UserWing:
 
         return {"candidates": len(candidates), "pruned": len(candidates)}
 
-    def _find_duplicate_in_topic(
-        self, topic: str, content: str, hall: str | None = None
+    def _find_duplicate(
+        self, hall: str | None, content: str, topic: str | None = None
     ) -> dict | None:
-        """Check if near-duplicate exists in the target topic."""
-        where_conditions = [{"wing": "user"}, {"topic": topic}]
+        """Find a near-duplicate, optionally limited to a hall and topic.
+
+        Returns {id, metadata, document} or None.
+        """
+        conditions = [{"wing": "user"}]
         if hall:
-            where_conditions.append({"hall": hall})
-
+            conditions.append({"hall": hall})
+        if topic:
+            conditions.append({"topic": topic})
         try:
             results = self.collection.query(
                 query_texts=[content],
                 n_results=1,
-                where={"$and": where_conditions},
-            )
-        except Exception:
-            return None
-
-        if (
-            not results
-            or not results.get("ids")
-            or not results["ids"][0]
-            or not results.get("distances")
-            or not results["distances"][0]
-        ):
-            return None
-
-        if results["distances"][0][0] < DEDUP_THRESHOLD:
-            return {"id": results["ids"][0][0]}
-        return None
-
-    def _find_duplicate(self, hall: str, content: str) -> dict | None:
-        """Find a near-duplicate in the same hall. Returns {id, metadata, document} or None."""
-        try:
-            results = self.collection.query(
-                query_texts=[content],
-                n_results=1,
-                where={"$and": [{"wing": "user"}, {"hall": hall}]},
+                where={"$and": conditions} if len(conditions) > 1 else conditions[0],
             )
         except Exception:
             return None
