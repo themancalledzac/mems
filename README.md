@@ -34,7 +34,7 @@ See [`CONTEXT.md`](docs/historical/CONTEXT.md) for the original target-state spe
 
 ## Tech Stack
 
-Python 3.12, `mempalace>=3.3.5` (aspirational target 3.3.6 once it lands on PyPI for the silent-truncation fix), FastMCP (via `mcp[cli]`), uvicorn+starlette, chromadb 1.5.4+, sentence-transformers, hatchling, ruff, pytest. Docker Compose for runtime.
+Python 3.12, `mempalace==3.6.0`, FastMCP (via `mcp[cli]`), uvicorn+starlette, chromadb 1.5.4+ (embeds with its bundled ONNX MiniLM model), hatchling, ruff, pytest. uv for the local venv. Docker Compose for runtime.
 
 ## Quickstart
 
@@ -300,10 +300,9 @@ wingpack publish refused, IDE doesn't see tools, etc.).
 ## Development
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --extra dev                # builds .venv from uv.lock
 
-pytest tests/                      # full test suite
+.venv/bin/python -m pytest -q      # full test suite (bare pytest picks up the wrong tests package)
 ruff check src/ mems_cli/ tests/   # lint
 ruff format src/ mems_cli/ tests/  # format (check with --check)
 ```
