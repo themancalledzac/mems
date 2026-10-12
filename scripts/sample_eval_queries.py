@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from mems_cli.protocol_audit import DEFAULT_PROJECTS_DIR, _iter_tool_calls  # noqa: E402
+from mems_cli.protocol_audit import DEFAULT_PROJECTS_DIR, _iter_tool_calls
 
 SEARCH_TOOL = "mempalace_search"
 
