@@ -25,6 +25,7 @@ PRUNE_BATCH = 1000
 LARGE_PRUNE_FRACTION = 0.5
 LARGE_PRUNE_MIN = 200
 LARGE_PRUNE_OVERRIDE = "mems sync --allow-large-prune"
+CLI_PRUNE_OVERRIDE = "python -m src.sync_engine prune --apply --force"
 
 
 class SyncSourceError(Exception):
@@ -134,6 +135,7 @@ def prune_wing(
     dry_run: bool = False,
     allow_large: bool = False,
     closets=None,
+    override_hint: str = LARGE_PRUNE_OVERRIDE,
 ) -> dict:
     """Delete this wing's drawers whose `source_file` is under `repo_path` but not in `keep`.
 
@@ -197,12 +199,12 @@ def prune_wing(
                 reason = f"prune would remove {len(doomed)} of {scanned} drawers"
             if reason:
                 return _prune_report(
-                    "blocked", f"{reason}; run `{LARGE_PRUNE_OVERRIDE}` to apply it", **counts
+                    "blocked", f"{reason}; run `{override_hint}` to apply it", **counts
                 )
 
         if dry_run:
             counts["kept"] = scanned - len(doomed)
-            return _prune_report("ok", removed=len(doomed), dry_run=True, **counts)
+            return _prune_report("ok", dry_run=True, **counts)
 
         sources = list(doomed_sources)
         if closets is not None:
@@ -462,6 +464,7 @@ def prune_registered_wings(
                 dry_run=not apply,
                 allow_large=force,
                 closets=closets,
+                override_hint=CLI_PRUNE_OVERRIDE,
             )
         reports.append({"wing": name, "repo_path": repo_path, **report})
     return reports

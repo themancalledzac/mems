@@ -488,7 +488,8 @@ class TestPruneWing:
         _drawers(col, [("a", _meta("w", repo / "a.md")), ("b", _meta("w", repo / "b.md"))])
         live = prune_wing(col, "w", str(repo), {str(repo / "a.md")}, dry_run=True)
         assert live["status"] == "ok"
-        assert live["removed"] == 1
+        assert live["removed"] == 0
+        assert live["would_remove"] == 1
         assert _ids(col) == ["a", "b"]
 
     def test_prune_pages_past_1000(self, prune_env):
@@ -938,6 +939,7 @@ class TestPruneCli:
         assert line["status"] == "ok"
         assert line["dry_run"] is True
         assert line["would_remove"] == 1
+        assert line["removed"] == 0
         assert line["top_sources"] == [{"source_file": str(repo / "gone.md"), "drawers": 1}]
         assert _ids(get_collection(str(tmp_palace))) == ["foreign", "keep", "stale"]
 
@@ -949,6 +951,8 @@ class TestPruneCli:
         assert main(["prune", "--apply"]) == 1
         [blocked] = _json_lines(capsys.readouterr().out)
         assert blocked["status"] == "blocked"
+        assert "python -m src.sync_engine prune --apply --force" in blocked["reason"]
+        assert "mems sync" not in blocked["reason"]
         assert _ids(get_collection(str(tmp_palace))) == ["foreign", "keep", "stale"]
 
         assert main(["prune", "--wing", "w", "--apply", "--force"]) == 0

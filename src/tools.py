@@ -3,7 +3,7 @@
 # mempalace public API map (verified 2026-04-17 against installed mempalace):
 # - mempalace.palace.get_collection(palace_path, collection_name="mempalace_drawers",
 #       create=True) -> chroma Collection
-# - mempalace.palace.get_closets_collection(palace_path, create=False) -> Collection
+# - mempalace.palace.get_closets_collection(palace_path, create=True) -> Collection
 # - mempalace.searcher.search_memories(query, palace_path, wing=None, room=None,
 #       n_results=5, max_distance=0.0) -> dict    (hybrid drawers+closets search)
 # - mempalace.searcher.build_where_filter(wing=None, room=None) -> dict
@@ -58,6 +58,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,7 @@ DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 DEFAULT_EMBEDDING_DIM = 384
 
 _FETCH_PAGE = 1000
+_SYNC_LOCK = threading.Lock()
 
 
 def handle_sync(
@@ -84,7 +86,15 @@ def handle_sync(
     """Sync repos into the palace and report only the wings this run touched.
 
     Status is `partial` when any wing errored or any prune was `error` or `blocked`.
+    Runs one at a time per process, since each run rewrites the ledger and the collection.
     """
+    with _SYNC_LOCK:
+        return _sync_locked(config_path, data_path, wing, full, allow_large_prune)
+
+
+def _sync_locked(
+    config_path: str, data_path: str, wing: str | None, full: bool, allow_large_prune: bool
+) -> dict:
     engine = SyncEngine(config_path=config_path, data_path=data_path)
 
     if wing and wing not in engine.repos:

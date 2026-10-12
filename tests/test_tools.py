@@ -118,6 +118,46 @@ class TestHandleSync:
         assert [e["wing"] for e in result["errors"]] == ["bad-wing"]
 
 
+def test_second_sync_waits_for_first(tmp_config, tmp_palace, monkeypatch):
+    import threading
+
+    from src import tools
+
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    order = []
+
+    class FakeEngine:
+        def __init__(self, config_path, data_path):
+            self.repos = {"first": {}, "second": {}}
+            self.ledger = SyncLedger(Path(data_path) / "sync_ledger.json")
+
+        def full_sync(self, wing_name=None, allow_large_prune=False):
+            order.append(f"start-{wing_name}")
+            if wing_name == "first":
+                first_entered.set()
+                release_first.wait(5)
+            order.append(f"end-{wing_name}")
+            return []
+
+    monkeypatch.setattr(tools, "SyncEngine", FakeEngine)
+
+    def sync(wing):
+        tools.handle_sync(str(tmp_config), str(tmp_palace), wing=wing, full=True)
+
+    first = threading.Thread(target=sync, args=("first",))
+    second = threading.Thread(target=sync, args=("second",))
+    first.start()
+    assert first_entered.wait(5)
+    second.start()
+    second.join(0.3)
+    assert order == ["start-first"]
+    release_first.set()
+    first.join(5)
+    second.join(5)
+    assert order == ["start-first", "end-first", "start-second", "end-second"]
+
+
 class TestSyncToolsRunInWorkerThread:
     async def test_memory_sync_runs_in_worker_thread(self, tmp_palace, tmp_config, monkeypatch):
         import anyio

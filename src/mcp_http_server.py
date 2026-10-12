@@ -552,7 +552,8 @@ def _start_liveness_watchdog(
                 last_ok = time.monotonic()
             elif time.monotonic() - last_ok >= stall_seconds:
                 print(
-                    f"[watchdog] /health unresponsive >{stall_seconds}s — exiting for restart",
+                    f"[watchdog] /health unresponsive >{stall_seconds}s — "
+                    "exiting for restart",
                     flush=True,
                 )
                 os._exit(1)
