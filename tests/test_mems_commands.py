@@ -11,8 +11,6 @@ from unittest.mock import MagicMock
 
 from mems_cli.main import main
 
-# --- shared helpers -----------------------------------------------------------
-
 
 class _FakePalaceClient:
     """Drop-in for PalaceClient. Records calls; returns a canned value."""
@@ -58,13 +56,9 @@ def _install_fake_palace(monkeypatch, return_value=None):
     return _Factory
 
 
-# --- 1. repo registry: add + list round-trip ---------------------------------
-
-
 def test_repo_add_and_list_roundtrip(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MEMORY_CONFIG_DIR", str(tmp_path / "cfg"))
 
-    # A git repo-ish path (just the .git marker is enough for the validator).
     repo = tmp_path / "myrepo"
     (repo / ".git").mkdir(parents=True)
 
@@ -72,14 +66,12 @@ def test_repo_add_and_list_roundtrip(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "added my-wing" in captured.out
 
-    # Verify the repos.json on disk matches the expected shape.
     repos = json.loads((tmp_path / "cfg" / "repos.json").read_text())
     assert "my-wing" in repos
     assert repos["my-wing"]["path"] == str(repo.resolve())
     assert repos["my-wing"]["wing"] == "my-wing"
 
-    # List should include the wing we just added.
-    capsys.readouterr()  # drain
+    capsys.readouterr()
     assert main(["repo", "list"]) == 0
     out = capsys.readouterr().out
     assert "my-wing" in out
@@ -96,20 +88,15 @@ def test_repo_add_rejects_non_git_path(tmp_path, monkeypatch, capsys):
     assert "not a git repo" in err
 
 
-# --- 2. publishing: dry-run calls publish_to_repo -----------------------------
-
-
 def test_publish_dry_run_invokes_publish_to_repo(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MEMORY_CONFIG_DIR", str(tmp_path / "cfg"))
 
-    # Seed repos.json with a wing.
     cfg = tmp_path / "cfg"
     cfg.mkdir()
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
     (cfg / "repos.json").write_text(json.dumps({"my-wing": {"path": str(repo), "wing": "my-wing"}}))
 
-    # Fake bundle file the fake palace "wrote".
     bundle = tmp_path / "my-wing.wingpack"
     bundle.write_bytes(b"fake-zip")
 
@@ -128,9 +115,6 @@ def test_publish_dry_run_invokes_publish_to_repo(tmp_path, monkeypatch, capsys):
     assert kwargs["dry_run"] is True
     assert kwargs["bundle"] == bundle
     assert kwargs["repo_root"] == type(kwargs["repo_root"])(repo)
-
-
-# --- 3. palace_ops: status hits memory_sync_status ---------------------------
 
 
 def test_status_calls_memory_sync_status(monkeypatch, capsys):
@@ -157,22 +141,8 @@ def test_status_calls_memory_sync_status(monkeypatch, capsys):
     assert calls[0][0] == "memory_sync_status"
 
 
-# --- 4. search: correct tool + args ------------------------------------------
-
-
-def test_search_wing_calls_mempalace_search(monkeypatch, capsys):
-    return_value = {
-        "structuredContent": {
-            "drawers": [
-                {
-                    "document": "the matching content",
-                    "distance": 0.1,
-                    "metadata": {"wing": "foo", "room": "bar", "source_path": "x.py"},
-                }
-            ]
-        }
-    }
-    _install_fake_palace(monkeypatch, return_value=return_value)
+def test_search_wing_calls_mempalace_search(monkeypatch):
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"results": []}})
 
     assert main(["search", "my query", "--wing", "foo"]) == 0
 
@@ -181,19 +151,31 @@ def test_search_wing_calls_mempalace_search(monkeypatch, capsys):
     assert calls[0][1]["query"] == "my query"
     assert calls[0][1]["wing"] == "foo"
 
+
+def test_search_human_output_shows_path_and_snippet(monkeypatch, capsys):
+    hit = {
+        "text": "the matching content",
+        "source_path": "/repos/Memory/src/x.py",
+        "distance": 0.1,
+        "wing": "memory",
+    }
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"results": [hit]}})
+
+    assert main(["search", "my query", "--wing", "memory"]) == 0
+
     out = capsys.readouterr().out
-    assert "x.py" in out
+    assert "src/x.py" in out
     assert "the matching content" in out
+    first = out.splitlines()[0]
+    assert first.endswith("src/x.py")
+    assert "?" not in first
 
 
 def test_search_without_wing_calls_search_all(monkeypatch):
-    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"drawers": []}})
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"results": []}})
     assert main(["search", "something"]) == 0
     calls = _FakePalaceClient.last_instance.calls
     assert calls[0][0] == "mempalace_search_all"
-
-
-# --- 5. tickets: missing env -> exit 1 with clear error ----------------------
 
 
 def test_ticket_list_missing_env_errors_clearly(monkeypatch, capsys):
@@ -207,15 +189,11 @@ def test_ticket_list_missing_env_errors_clearly(monkeypatch, capsys):
     assert "JIRA_API_TOKEN" in err
 
 
-# --- 6. hybrid: joins Jira + palace ------------------------------------------
-
-
 def test_hybrid_joins_jira_and_palace(monkeypatch, capsys):
     monkeypatch.setenv("JIRA_URL", "https://example.atlassian.net")
     monkeypatch.setenv("JIRA_EMAIL", "me@example.com")
     monkeypatch.setenv("JIRA_API_TOKEN", "token")
 
-    # Mock the Jira client's issue() method.
     fake_issue = {
         "key": "FOO-123",
         "fields": {
@@ -260,9 +238,6 @@ def test_hybrid_joins_jira_and_palace(monkeypatch, capsys):
     assert "Fix the bug" in out
     assert "src/thing.py" in out
     assert "matching palace drawer" in out
-
-
-# --- 7. palace_ops shell-out: `mems make` delegates to `mempalace init` ------
 
 
 def test_mems_make_shells_out_to_mempalace_init(monkeypatch, tmp_path):

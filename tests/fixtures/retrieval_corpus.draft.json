@@ -1,0 +1,413 @@
+{
+  "version": 1,
+  "wings": {
+    "edens-zac": {
+      "repo_dir": "edens.zac"
+    },
+    "edens-zac-backend": {
+      "repo_dir": "edens.zac.backend"
+    },
+    "agent-orchestrator": {
+      "repo_dir": "agent-orchestrator"
+    },
+    "memory": {
+      "repo_dir": "Memory"
+    }
+  },
+  "questions": [
+    {
+      "id": "ez-02",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "TIMING revalidateCache constant value seconds",
+      "gold": [
+        "app/constants/index.ts"
+      ],
+      "basis": "app/constants/index.ts:135-138 defines TIMING.revalidateCache = 3600 (sampled)"
+    },
+    {
+      "id": "ez-03",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "isContentVisibleInCollection visibility content block collection-specific visible flag",
+      "gold": [
+        "app/utils/contentLayout.ts"
+      ],
+      "basis": "app/utils/contentLayout.ts:255-275 defines isContentVisibleInCollection (global and per-collection image visibility); 282-303 hasRenderableContent and filterVisibleBlocks (sampled)"
+    },
+    {
+      "id": "ez-04",
+      "wing": "edens-zac",
+      "split": "holdout",
+      "style": "identifiers",
+      "query": "BFF proxy route handler Origin allowlist body size cap write methods",
+      "gold": [
+        "app/api/proxy/[...path]/route.ts",
+        "app/utils/originAllowlist.ts"
+      ],
+      "basis": "app/api/proxy/[...path]/route.ts:116-161 handle() checks write methods, origin, 16KB/25MB caps; app/utils/originAllowlist.ts:83-87 isAllowedWriteOrigin (sampled)"
+    },
+    {
+      "id": "ez-05",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "buildMeContentBlock ME_TILE_ID synthetic Me tile placeholder coverImage",
+      "gold": [
+        "app/utils/meContentBlock.ts"
+      ],
+      "basis": "app/utils/meContentBlock.ts:10-31 defines ME_TILE_ID and buildMeContentBlock, empty imageUrl when no cover (sampled)"
+    },
+    {
+      "id": "ez-06",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "CHIP_WEIGHT ToolbarExtra FilterToolbar upper tier extras weight order",
+      "gold": [
+        "app/components/ui/FilterToolbar/chipWeights.ts"
+      ],
+      "basis": "app/components/ui/FilterToolbar/chipWeights.ts:7-19 defines CHIP_WEIGHT and ToolbarExtra (sampled)"
+    },
+    {
+      "id": "ez-07",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "filterContent ContentFilterCriteria non-image blocks dropped when filter active",
+      "gold": [
+        "app/utils/contentFilter.ts"
+      ],
+      "basis": "app/utils/contentFilter.ts:33-60 ContentFilterCriteria; 153-187 filterContent returns early with no filters, drops non-images (sampled)"
+    },
+    {
+      "id": "ez-08",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "prose",
+      "query": "which api call fetches all content tags and what cache tag does it use",
+      "gold": [
+        "app/lib/api/content.ts"
+      ],
+      "basis": "app/lib/api/content.ts:35-45 getAllTags calls /content/tags with cache tag content-tags (sampled)"
+    },
+    {
+      "id": "ez-09",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "prose",
+      "query": "how does the explore page load tags and locations and what does it show when the fetch fails",
+      "gold": [
+        "app/explore/ExploreDirectory.tsx",
+        "app/lib/api/collections.ts"
+      ],
+      "basis": "app/explore/ExploreDirectory.tsx:15-36 calls getMetadata and renders the failure message; app/lib/api/collections.ts:336 defines getMetadata (sampled)"
+    },
+    {
+      "id": "ez-10",
+      "wing": "edens-zac",
+      "split": "holdout",
+      "style": "prose",
+      "query": "what stops a hostile site from triggering cache revalidation with the admin session cookie",
+      "gold": [
+        "app/api/revalidate/route.ts",
+        "app/utils/originAllowlist.ts"
+      ],
+      "basis": "app/api/revalidate/route.ts:43-50 POST checks session cookie then isAllowedWriteOrigin; app/utils/originAllowlist.ts:1-12,83-87 explains and implements the Origin rule (written)"
+    },
+    {
+      "id": "ez-11",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "prose",
+      "query": "the Next.js middleware that redirects visitors without a session cookie away from admin pages",
+      "gold": [
+        "proxy.ts"
+      ],
+      "basis": "proxy.ts:23-76 proxy() gates the admin route group on ezac_session and redirects to /login; file is named proxy.ts, not middleware (written)"
+    },
+    {
+      "id": "ez-12",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "prose",
+      "query": "how does the download button start a download and reset itself afterward",
+      "gold": [
+        "app/hooks/useDownloadNavigation.ts",
+        "app/components/ClientGalleryDownload/ClientGalleryDownload.tsx"
+      ],
+      "basis": "app/hooks/useDownloadNavigation.ts:37-60 startDownload sets window.location.href and resets on a timer; app/components/ClientGalleryDownload/ClientGalleryDownload.tsx:40-53 uses it (sampled)"
+    },
+    {
+      "id": "ez-13",
+      "wing": "edens-zac",
+      "split": "dev",
+      "style": "prose",
+      "query": "when is a viewer allowed to download a client gallery, role grant or password cookie",
+      "gold": [
+        "app/utils/galleryAccess.ts"
+      ],
+      "basis": "app/utils/galleryAccess.ts:43-73 canDownloadCollection allows CLIENT role or password-protected client gallery with content (written)"
+    },
+    {
+      "id": "ezb-03",
+      "wing": "edens-zac-backend",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "UserPageAssembler MeResponse assembleForUser galleries collections role level",
+      "gold": [
+        "src/main/java/edens/zac/portfolio/backend/services/UserPageAssembler.java"
+      ],
+      "basis": "src/main/java/edens/zac/portfolio/backend/services/UserPageAssembler.java:50-65 defines UserPageAssembler and assembleForUser, which builds the synthetic user page from member collection ids (sampled)"
+    },
+    {
+      "id": "ezb-04",
+      "wing": "edens-zac-backend",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "ReadCacheInvalidator markChanged CloudFront invalidation read surface after commit",
+      "gold": [
+        "src/main/java/edens/zac/portfolio/backend/services/ReadCacheInvalidator.java"
+      ],
+      "basis": "src/main/java/edens/zac/portfolio/backend/services/ReadCacheInvalidator.java:22-48,74-76 describes after-commit invalidation and defines markChanged, which publishes ReadSurfaceChanged (sampled)"
+    },
+    {
+      "id": "ezb-05",
+      "wing": "edens-zac-backend",
+      "split": "holdout",
+      "style": "prose",
+      "query": "what max-age and s-maxage values do the public read endpoints send in Cache-Control",
+      "gold": [
+        "src/main/java/edens/zac/portfolio/backend/config/ReadCachePolicy.java"
+      ],
+      "basis": "src/main/java/edens/zac/portfolio/backend/config/ReadCachePolicy.java:16-33 defines the policy and its defaults of 60s max-age and 300s s-maxage from app.cache.* properties (sampled)"
+    },
+    {
+      "id": "ezb-06",
+      "wing": "edens-zac-backend",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "PUBLIC_COLLECTION_MEMBERSHIP EXISTS collection_content visible LISTED gallery_password IS NULL",
+      "gold": [
+        "src/main/java/edens/zac/portfolio/backend/dao/ContentRepository.java"
+      ],
+      "basis": "src/main/java/edens/zac/portfolio/backend/dao/ContentRepository.java:184 defines PUBLIC_COLLECTION_MEMBERSHIP, appended to queries at 443 and 492 (sampled)"
+    },
+    {
+      "id": "ezb-07",
+      "wing": "edens-zac-backend",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "findLocationsWithVisibleContent LISTED collection public orphan image count",
+      "gold": [
+        "src/main/java/edens/zac/portfolio/backend/dao/LocationRepository.java"
+      ],
+      "basis": "src/main/java/edens/zac/portfolio/backend/dao/LocationRepository.java:335-346 defines findLocationsWithVisibleContent and documents the LISTED-only collection_count (sampled)"
+    },
+    {
+      "id": "ezb-08",
+      "wing": "edens-zac-backend",
+      "split": "dev",
+      "style": "prose",
+      "query": "does login take the same time when the email does not exist, and what rate limit applies",
+      "gold": [
+        "src/main/java/edens/zac/portfolio/backend/controller/auth/AuthController.java"
+      ],
+      "basis": "src/main/java/edens/zac/portfolio/backend/controller/auth/AuthController.java:47-85 login runs passwordEncoder.matches against DUMMY_HASH for unknown emails and checks AuthLoginLimiter (sampled, adapted from the AuthController login query)"
+    },
+    {
+      "id": "ezb-09",
+      "wing": "edens-zac-backend",
+      "split": "holdout",
+      "style": "identifiers",
+      "query": "SessionService resolve session token AuthPrincipal",
+      "gold": [
+        "src/main/java/edens/zac/portfolio/backend/services/SessionService.java",
+        "src/main/java/edens/zac/portfolio/backend/config/SessionAuthenticationFilter.java"
+      ],
+      "basis": "src/main/java/edens/zac/portfolio/backend/services/SessionService.java:28 class with resolve(token); config/SessionAuthenticationFilter.java:33-35 reads the cookie and calls sessionService.resolve (sampled)"
+    },
+    {
+      "id": "ezb-10",
+      "wing": "edens-zac-backend",
+      "split": "dev",
+      "style": "prose",
+      "query": "how does an admin set the password on a client gallery collection",
+      "gold": [
+        "src/main/java/edens/zac/portfolio/backend/services/CollectionService.java",
+        "src/main/java/edens/zac/portfolio/backend/controller/admin/CollectionAdminController.java"
+      ],
+      "basis": "src/main/java/edens/zac/portfolio/backend/services/CollectionService.java:1661-1681 updateGalleryAccess calls saveGalleryAccess; controller/admin/CollectionAdminController.java:63 POST /{id}/gallery-access (sampled, adapted)"
+    },
+    {
+      "id": "ezb-11",
+      "wing": "edens-zac-backend",
+      "split": "dev",
+      "style": "prose",
+      "query": "the github workflow that runs checkstyle and the tests before building the docker image",
+      "gold": [
+        ".github/workflows/ci-cd.yml"
+      ],
+      "basis": ".github/workflows/ci-cd.yml:10-141 has lint (checkstyle), test, and build (mvn package then docker build) jobs (written)"
+    },
+    {
+      "id": "ezb-12",
+      "wing": "edens-zac-backend",
+      "split": "dev",
+      "style": "prose",
+      "query": "why is port 8080 open to the whole internet on the EC2 security group",
+      "gold": [
+        "terraform/security.tf"
+      ],
+      "basis": "terraform/security.tf:36-47 backend_api ingress rule on 8080 from 0.0.0.0/0 with the Amplify and Caddy comment (sampled, adapted from the Caddyfile/ingress query)"
+    },
+    {
+      "id": "ao-01",
+      "wing": "agent-orchestrator",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "load_settings ORCH_HOME ORCH_MAX_CLAUDE_JOBS ORCH_EXECUTOR env var db_path",
+      "gold": [
+        "src/orch/settings.py"
+      ],
+      "basis": "src/orch/settings.py:27 db_path and :66-90 load_settings read the ORCH_* env vars, ORCH_HOME defaulting to ~/.orch (sampled)"
+    },
+    {
+      "id": "ao-02",
+      "wing": "agent-orchestrator",
+      "split": "dev",
+      "style": "prose",
+      "query": "how does a Claude job get blocked from reading .env or key files, never_read enforcement in the permission callback",
+      "gold": [
+        "src/orch/adapters/claude_sdk.py"
+      ],
+      "basis": "src/orch/adapters/claude_sdk.py:133-145 _never_read_match and :174-215 path_rules deny any tool touching a never_read pattern (sampled)"
+    },
+    {
+      "id": "ao-03",
+      "wing": "agent-orchestrator",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "_resumable failure_kind max_turns usage limit resume session",
+      "gold": [
+        "src/orch/engine/runs.py"
+      ],
+      "basis": "src/orch/engine/runs.py:498-515 _resumes_after_max_turns and _resumable decide which earlier run a job resumes (sampled)"
+    },
+    {
+      "id": "ao-04",
+      "wing": "agent-orchestrator",
+      "split": "dev",
+      "style": "prose",
+      "query": "what happens to a step's worktree on retry, is it rebased onto main before the next build attempt",
+      "gold": [
+        "src/orch/engine/scripts.py"
+      ],
+      "basis": "src/orch/engine/scripts.py:336 _worktree and :359-395 rebase an existing worktree onto the land target before a new attempt, conflicts go to _conflict (sampled)"
+    },
+    {
+      "id": "ao-05",
+      "wing": "agent-orchestrator",
+      "split": "holdout",
+      "style": "identifiers",
+      "query": "build_options setting_sources skills plugins max_turns ClaudeAgentOptions",
+      "gold": [
+        "src/orch/adapters/claude_sdk.py",
+        "tests/test_adapter_claude_sdk.py"
+      ],
+      "basis": "src/orch/adapters/claude_sdk.py:236-262 build_options sets setting_sources=[], skills, plugins, max_turns; tests/test_adapter_claude_sdk.py is its test file (sampled)"
+    },
+    {
+      "id": "ao-06",
+      "wing": "agent-orchestrator",
+      "split": "holdout",
+      "style": "prose",
+      "query": "how does the engine run a local model skill job such as triaging a failed check log",
+      "gold": [
+        "src/orch/engine/skill_stage.py",
+        "src/orch/engine/steps.py"
+      ],
+      "basis": "src/orch/engine/skill_stage.py:33-60 run_skill runs one local skill job in app.local_slot; src/orch/engine/steps.py:444-460 calls it for log-triage after a failed verify (sampled)"
+    },
+    {
+      "id": "ao-07",
+      "wing": "agent-orchestrator",
+      "split": "dev",
+      "style": "prose",
+      "query": "the macOS launch agent that keeps the orch server running in the background",
+      "gold": [
+        "src/orch/commands/service.py"
+      ],
+      "basis": "src/orch/commands/service.py:1 module docstring (launchd agent running orch serve) and :57-70 plist_dict build the agent plist (written)"
+    },
+    {
+      "id": "ao-08",
+      "wing": "agent-orchestrator",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "create_server FastMCP /health submit repos repo_draft repo_add repo_check tools",
+      "gold": [
+        "src/orch/mcp_server.py"
+      ],
+      "basis": "src/orch/mcp_server.py:40-110 create_server builds the FastMCP server with the request and repo tools at /mcp and GET /health (sampled)"
+    },
+    {
+      "id": "mem-03",
+      "wing": "memory",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "SUMMARY_ITEM_CHARS user wing summary constants",
+      "gold": [
+        "src/user_wing.py"
+      ],
+      "basis": "src/user_wing.py:30-33 defines SUMMARY_CHAR_BUDGET, SUMMARY_ITEM_CHARS, SUMMARY_OPEN_IDEAS, SUMMARY_HALL_ITEMS; :390-430 UserWing.summary uses them to trim the text (sampled)"
+    },
+    {
+      "id": "mem-04",
+      "wing": "memory",
+      "split": "dev",
+      "style": "prose",
+      "query": "script that runs when the container starts and lets docker run execute any command instead of booting the server",
+      "gold": [
+        "entrypoint.sh"
+      ],
+      "basis": "entrypoint.sh:23-29 is the CLI passthrough: when args are given it does exec \"$@\" instead of the server boot flow; the query does not name the file (adapted from the sampled docker-container query)"
+    },
+    {
+      "id": "mem-05",
+      "wing": "memory",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "MEMPALACE_FS_GATE_MODE warn block off pretooluse_fs_gate",
+      "gold": [
+        "integration/claude_code/pretooluse_fs_gate.py"
+      ],
+      "basis": "integration/claude_code/pretooluse_fs_gate.py:29-37 documents the warn/block/off modes and env vars; :243-244 _mode() reads MEMPALACE_FS_GATE_MODE, default warn (sampled)"
+    },
+    {
+      "id": "mem-06",
+      "wing": "memory",
+      "split": "dev",
+      "style": "prose",
+      "query": "how does mems doctor check whether agents searched the palace before touching the filesystem",
+      "gold": [
+        "mems_cli/commands/palace_ops.py",
+        "mems_cli/protocol_audit.py"
+      ],
+      "basis": "mems_cli/commands/palace_ops.py:94-120 registers doctor with --protocol, :294 cmd_doctor runs it; mems_cli/protocol_audit.py:137 audit() and :186 format_report() do the session audit (adapted from sampled mems doctor query)"
+    },
+    {
+      "id": "mem-07",
+      "wing": "memory",
+      "split": "holdout",
+      "style": "identifiers",
+      "query": "_attach_health_route /health/deep custom_route",
+      "gold": [
+        "src/mcp_http_server.py"
+      ],
+      "basis": "src/mcp_http_server.py:432-464 _attach_health_route mounts GET /health and GET /health/deep via server.custom_route (adapted from sampled mcp_http_server health query)"
+    }
+  ]
+}

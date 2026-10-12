@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "wings": {
+    "memory": {"repo_dir": "Memory"}
+  },
+  "questions": [
+    {
+      "id": "mem-01",
+      "wing": "memory",
+      "split": "dev",
+      "style": "prose",
+      "query": "which class records the last synced commit sha for each wing in the sync ledger",
+      "gold": ["src/sync_engine.py"],
+      "basis": "src/sync_engine.py:23 defines SyncLedger, which stores per-wing entries including last_commit_sha."
+    },
+    {
+      "id": "mem-02",
+      "wing": "memory",
+      "split": "dev",
+      "style": "identifiers",
+      "query": "handle_sync_status SyncLedger entries wings",
+      "gold": ["src/tools.py"],
+      "basis": "src/tools.py:112 defines handle_sync_status, which returns the SyncLedger entries under wings."
+    }
+  ]
+}

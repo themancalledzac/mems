@@ -1,13 +1,4 @@
-"""`mems` CLI dispatcher.
-
-Phase 6 wires up the scaffolding plus two real subcommands:
-  - `mems health` — hits `/health` on the MCP server
-  - `mems tools`  — lists the tools the server advertises
-
-Phase 7 modules will call `register_subcommands` with their own parsers.
-The dispatch table is a mutable module-level dict that later modules can
-extend via `register_command`.
-"""
+"""`mems` CLI dispatcher. Subcommands register through `register_command`."""
 
 from __future__ import annotations
 
@@ -16,19 +7,18 @@ import sys
 from typing import Callable
 
 from mems_cli import __version__
-from mems_cli.common import get_server_url, print_table
+from mems_cli.common import (
+    EXIT_OK,
+    EXIT_SERVER_ERROR,
+    EXIT_USER_ERROR,
+    get_server_url,
+    print_table,
+)
 from mems_cli.palace_client import PalaceClient, PalaceClientError
-
-# Exit codes
-EXIT_OK = 0
-EXIT_USER_ERROR = 1
-EXIT_SERVER_ERROR = 2
-
 
 CommandHandler = Callable[[argparse.Namespace], int]
 
 
-# Dispatch table — Phase 7 modules extend this via `register_command`.
 _COMMANDS: dict[str, CommandHandler] = {}
 
 
@@ -38,7 +28,7 @@ def register_command(name: str, handler: CommandHandler) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Construct the top-level argparse parser with Phase 6 subcommands."""
+    """Construct the top-level argparse parser."""
     parser = argparse.ArgumentParser(
         prog="mems",
         description="Memory Palace CLI — talk to the MCP server.",
@@ -56,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def register_subcommands(subparsers: argparse._SubParsersAction) -> None:
-    """Wire built-in subcommands + extension point for Phase 7 modules."""
+    """Wire built-in subcommands and the command modules."""
     health_p = subparsers.add_parser("health", help="Check palace server health.")
     health_p.set_defaults(func=cmd_health)
     register_command("health", cmd_health)
@@ -65,7 +55,9 @@ def register_subcommands(subparsers: argparse._SubParsersAction) -> None:
     tools_p.set_defaults(func=cmd_tools)
     register_command("tools", cmd_tools)
 
-    # Phase 7 command modules.
+    from mems_cli.commands import (
+        eval as eval_cmd,
+    )
     from mems_cli.commands import (
         hybrid,
         my,
@@ -88,11 +80,9 @@ def register_subcommands(subparsers: argparse._SubParsersAction) -> None:
         todo,
         standup,
         hybrid,
+        eval_cmd,
     ):
         module.register(subparsers)
-
-
-# --- Handlers ----------------------------------------------------------------
 
 
 def cmd_health(args: argparse.Namespace) -> int:
@@ -131,9 +121,6 @@ def cmd_tools(args: argparse.Namespace) -> int:
     print()
     print(f"{len(tools)} tool(s)")
     return EXIT_OK
-
-
-# --- Entry point -------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> int:

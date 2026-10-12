@@ -7,12 +7,8 @@ import json
 import sys
 
 from mems_cli.commands.tickets import JiraClientError, load_client
-from mems_cli.common import extract_tool_result
+from mems_cli.common import EXIT_OK, EXIT_SERVER_ERROR, EXIT_USER_ERROR, extract_tool_result
 from mems_cli.palace_client import PalaceClient, PalaceClientError
-
-EXIT_OK = 0
-EXIT_USER_ERROR = 1
-EXIT_SERVER_ERROR = 2
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -32,7 +28,6 @@ def _description_text(raw) -> str:
     if isinstance(raw, str):
         return raw
     if isinstance(raw, dict):
-        # Walk the ADF tree for any `text` leaves.
         texts: list[str] = []
 
         def walk(node):

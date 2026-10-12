@@ -16,6 +16,10 @@ from typing import Any, Iterable, Mapping, NoReturn, Sequence
 DEFAULT_SERVER_URL = "http://localhost:8787"
 DEFAULT_CONFIG_DIR = "~/.config/mems"
 
+EXIT_OK = 0
+EXIT_USER_ERROR = 1
+EXIT_SERVER_ERROR = 2
+
 
 def get_server_url() -> str:
     """Return the Memory Palace server URL.
@@ -36,7 +40,6 @@ def get_config_dir() -> Path:
     return path
 
 
-# --- Output helpers ----------------------------------------------------------
 
 
 def print_json(data: Any) -> None:
@@ -67,7 +70,6 @@ def print_table(rows: Sequence[Sequence[Any]], headers: Sequence[str]) -> None:
         print(_fmt(row))
 
 
-# --- repos.json helpers ------------------------------------------------------
 
 
 def load_repos_json(config_dir: Path) -> dict:
@@ -88,7 +90,6 @@ def save_repos_json(config_dir: Path, data: Mapping[str, Any]) -> None:
         fh.write("\n")
 
 
-# --- Error helper ------------------------------------------------------------
 
 
 def err(msg: str, code: int = 1) -> NoReturn:
@@ -97,7 +98,6 @@ def err(msg: str, code: int = 1) -> NoReturn:
     sys.exit(code)
 
 
-# --- MCP tool-call result helpers --------------------------------------------
 
 
 def extract_tool_result(result: Mapping[str, Any]) -> Any:
@@ -113,7 +113,6 @@ def extract_tool_result(result: Mapping[str, Any]) -> Any:
 
     structured = result.get("structuredContent")
     if structured is not None:
-        # FastMCP wraps list returns as {"result": [...]} inside structuredContent.
         if isinstance(structured, Mapping) and set(structured.keys()) == {"result"}:
             return structured["result"]
         return structured
