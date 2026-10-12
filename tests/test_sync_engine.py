@@ -1,5 +1,7 @@
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +16,7 @@ from src.sync_engine import (
     _flatten_rooms,
     get_head_sha,
     list_indexable_files,
+    main,
     prune_wing,
 )
 
@@ -895,3 +898,92 @@ class TestReconcile:
 
         assert len(seen) == 1
         assert seen[0] is not None
+
+
+@pytest.fixture
+def prune_cli_env(tmp_path, tmp_palace, monkeypatch):
+    """Wing `w` with one kept and one stale drawer, plus a wing outside repos.json."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "a.md").write_text("alpha")
+    _commit_all(repo)
+    config = tmp_path / "cfg"
+    config.mkdir()
+    (config / "repos.json").write_text(json.dumps({"w": {"path": str(repo)}}))
+    (config / "mempalace.yaml").write_text("wings: {}\n")
+    _drawers(
+        get_collection(str(tmp_palace)),
+        [
+            ("keep", _meta("w", repo / "a.md")),
+            ("stale", _meta("w", repo / "gone.md")),
+            ("foreign", _meta("unlisted", repo / "gone.md")),
+        ],
+    )
+    monkeypatch.setenv("PALACE_PATH", str(tmp_palace))
+    monkeypatch.setenv("CONFIG_PATH", str(config))
+    return repo, config
+
+
+def _json_lines(out):
+    return [json.loads(line) for line in out.splitlines() if line.strip()]
+
+
+class TestPruneCli:
+    def test_prune_cli_dry_run_by_default(self, prune_cli_env, tmp_palace, capsys):
+        repo, _ = prune_cli_env
+
+        assert main(["prune"]) == 0
+
+        [line] = _json_lines(capsys.readouterr().out)
+        assert line["wing"] == "w"
+        assert line["status"] == "ok"
+        assert line["dry_run"] is True
+        assert line["would_remove"] == 1
+        assert line["top_sources"] == [{"source_file": str(repo / "gone.md"), "drawers": 1}]
+        assert _ids(get_collection(str(tmp_palace))) == ["foreign", "keep", "stale"]
+
+    def test_prune_cli_apply_force(self, prune_cli_env, tmp_palace, capsys):
+        repo, _ = prune_cli_env
+        (repo / "a.md").unlink()
+        _commit_all(repo)
+
+        assert main(["prune", "--apply"]) == 1
+        [blocked] = _json_lines(capsys.readouterr().out)
+        assert blocked["status"] == "blocked"
+        assert _ids(get_collection(str(tmp_palace))) == ["foreign", "keep", "stale"]
+
+        assert main(["prune", "--wing", "w", "--apply", "--force"]) == 0
+        [applied] = _json_lines(capsys.readouterr().out)
+        assert applied["status"] == "ok"
+        assert applied["removed"] == 2
+        assert _ids(get_collection(str(tmp_palace))) == ["foreign"]
+
+    def test_prune_cli_unknown_wing(self, prune_cli_env, tmp_palace, capsys):
+        assert main(["prune", "--wing", "unlisted", "--apply", "--force"]) == 2
+        assert "unlisted" in capsys.readouterr().err
+        assert _ids(get_collection(str(tmp_palace))) == ["foreign", "keep", "stale"]
+
+    def test_prune_cli_source_error_reports_wing(self, prune_cli_env, tmp_path, capsys):
+        _, config = prune_cli_env
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        (config / "repos.json").write_text(json.dumps({"bad": {"path": str(plain)}}))
+
+        assert main(["prune"]) == 1
+        [line] = _json_lines(capsys.readouterr().out)
+        assert line["wing"] == "bad"
+        assert line["status"] == "error"
+
+    def test_prune_cli_runs_as_module(self, prune_cli_env):
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            [sys.executable, "-m", "src.sync_engine", "prune"],
+            cwd=root,
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        assert result.returncode == 0, result.stderr
+        [line] = _json_lines(result.stdout)
+        assert line["would_remove"] == 1

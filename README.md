@@ -81,6 +81,14 @@ All `mems` subcommands hit the MCP server at `MEMORY_SERVER_URL`
 | `mems logs [--limit N] [--wing W]` | Recent drawer log entries. |
 | `mems export <wing> [--output PATH]` | Export a wing as a `.wingpack` bundle. |
 
+To check or clean drawers for files a repo no longer has, run
+`python -m src.sync_engine prune [--wing W] [--apply] [--force]` in the container. It reads
+`PALACE_PATH` and `CONFIG_PATH` like the server. It is a dry run by default and prints one
+JSON line per wing with `would_remove` and `top_sources`. `--apply` deletes, and `--force`
+allows a prune that would remove most of a wing. It only touches wings in `repos.json`.
+Before `--apply`, run `docker compose stop`, then
+`docker compose run --rm --no-deps mempalace python -m src.sync_engine prune --apply`.
+
 ### Search & user context
 
 | Command | Purpose |

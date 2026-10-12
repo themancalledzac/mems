@@ -1,8 +1,10 @@
 """Multi-repo sync: list each wing's files, prune the rest, index what is kept."""
 
+import argparse
 import json
 import os
 import subprocess
+import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -415,3 +417,83 @@ class SyncEngine:
         except Exception as exc:
             self.ledger.mark_error(name, repo_path, str(exc))
             return self.ledger.get(name)
+
+
+def prune_registered_wings(
+    config_path: str,
+    palace_path: str,
+    wing_name: str | None = None,
+    *,
+    apply: bool = False,
+    force: bool = False,
+) -> list[dict]:
+    """Run `prune_wing` for each wing in repos.json (or one) and return one report per wing.
+
+    A dry run unless `apply`. `force` passes `allow_large`. Wings not in repos.json are
+    never touched; an unknown `wing_name` raises ValueError.
+    """
+    config = Path(config_path)
+    repos = json.loads((config / "repos.json").read_text())
+    if wing_name and wing_name not in repos:
+        raise ValueError(f"wing not in repos.json: {wing_name}")
+    taxonomy = yaml.safe_load((config / "mempalace.yaml").read_text()) or {}
+    targets = {wing_name: repos[wing_name]} if wing_name else repos
+    collection = get_collection(palace_path, create=False)
+    closets = None
+    if apply:
+        try:
+            closets = get_closets_collection(palace_path, create=False)
+        except Exception:
+            closets = None
+
+    reports = []
+    for name, repo_config in targets.items():
+        repo_path = repo_config["path"]
+        try:
+            keep = list_indexable_files(repo_path, taxonomy.get("sync") or {})
+        except SyncSourceError as exc:
+            report = _prune_report("error", str(exc))
+        else:
+            report = prune_wing(
+                collection,
+                name,
+                repo_path,
+                {str(p) for p in keep},
+                dry_run=not apply,
+                allow_large=force,
+                closets=closets,
+            )
+        reports.append({"wing": name, "repo_path": repo_path, **report})
+    return reports
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m src.sync_engine prune`: print one JSON line per wing. Exit 1 on error or block.
+
+    Reads PALACE_PATH and CONFIG_PATH like the server. Stop the server before `--apply`, so
+    the palace has one writer.
+    """
+    parser = argparse.ArgumentParser(prog="python -m src.sync_engine")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    prune_p = sub.add_parser("prune", help="Remove drawers for files a repo no longer has.")
+    prune_p.add_argument("--wing", default=None, help="Only this wing from repos.json.")
+    prune_p.add_argument("--apply", action="store_true", help="Delete. Default is a dry run.")
+    prune_p.add_argument("--force", action="store_true", help="Allow large prunes.")
+    prune_p.add_argument("--palace", default=os.environ.get("PALACE_PATH", "/data/palace"))
+    prune_p.add_argument("--config", default=os.environ.get("CONFIG_PATH", "/config"))
+    args = parser.parse_args(argv)
+
+    try:
+        reports = prune_registered_wings(
+            args.config, args.palace, args.wing, apply=args.apply, force=args.force
+        )
+    except Exception as exc:
+        print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    for report in reports:
+        print(json.dumps(report))
+    return 1 if any(r["status"] in ("error", "blocked") for r in reports) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
