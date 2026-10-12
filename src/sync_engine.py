@@ -56,9 +56,9 @@ def _flatten_rooms(wing_def: dict) -> list:
 def list_indexable_files(repo_path: str, sync_cfg: dict) -> list[Path]:
     """Files to keep for a wing: git ls-files -z --cached --others --exclude-standard, filtered.
 
-    Raises SyncSourceError when git fails, is missing or times out. A None `sync_cfg`
-    means no `sync:` block in the config. Paths are `Path(repo_path) / rel` and are
-    never resolved, so they match stored `source_file` values.
+    Keeps upstream's readable extensions plus `extra_extensions` and `extra_filenames` from
+    `sync_cfg` (None means no `sync:` block). Raises SyncSourceError when git fails. Paths
+    are `Path(repo_path) / rel`, never resolved, so they match stored `source_file` values.
     """
     try:
         result = subprocess.run(
@@ -86,6 +86,8 @@ def list_indexable_files(repo_path: str, sync_cfg: dict) -> list[Path]:
     exclude_matcher = GitignoreMatcher.from_patterns(root, exclude) if exclude else None
     data_cap = sync_cfg.get("max_data_file_bytes")
     data_exts = {e.lower() for e in sync_cfg.get("data_extensions") or []}
+    extensions = READABLE_EXTENSIONS | {e.lower() for e in sync_cfg.get("extra_extensions") or []}
+    filenames = set(sync_cfg.get("extra_filenames") or [])
 
     rels = dict.fromkeys(
         r for r in result.stdout.decode("utf-8", errors="surrogateescape").split("\0") if r
@@ -99,7 +101,7 @@ def list_indexable_files(repo_path: str, sync_cfg: dict) -> list[Path]:
             continue
         path = root / rel
         suffix = path.suffix.lower()
-        if suffix not in READABLE_EXTENSIONS:
+        if suffix not in extensions and parts[-1] not in filenames:
             continue
         if path.is_symlink() or not path.is_file():
             continue

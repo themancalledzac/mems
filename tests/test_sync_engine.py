@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 from mempalace.miner import GitignoreMatcher
+from mempalace.miner import process_file as real_process_file
 from mempalace.palace import get_closets_collection, get_collection
 
 from src.sync_engine import (
@@ -374,6 +375,28 @@ class TestListIndexableFiles:
         repo = _init_repo(tmp_path / "r")
         (repo / "a.md").write_text("x")
         assert _rel(repo, list_indexable_files(str(repo), None)) == ["a.md"]
+
+    def test_indexable_extra_extensions(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "main.tf").write_text("x")
+        (repo / "VARS.TF").write_text("x")
+        (repo / "notes.hcl").write_text("x")
+        (repo / "a.md").write_text("x")
+        assert _rel(repo, list_indexable_files(str(repo), {})) == ["a.md"]
+        cfg = {"extra_extensions": [".tf"]}
+        assert _rel(repo, list_indexable_files(str(repo), cfg)) == ["VARS.TF", "a.md", "main.tf"]
+
+    def test_indexable_extra_filenames(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "Dockerfile").write_text("FROM python")
+        (repo / "svc").mkdir()
+        (repo / "svc" / "pom.xml").write_text("<project/>")
+        (repo / "other.xml").write_text("<x/>")
+        (repo / "node_modules").mkdir()
+        (repo / "node_modules" / "Dockerfile").write_text("FROM node")
+        assert _rel(repo, list_indexable_files(str(repo), {})) == []
+        cfg = {"extra_filenames": ["Dockerfile", "pom.xml"]}
+        assert _rel(repo, list_indexable_files(str(repo), cfg)) == ["Dockerfile", "svc/pom.xml"]
 
 
 def _drawers(collection, rows):
@@ -1015,6 +1038,26 @@ class TestReconcile:
         assert engine().incremental_sync() == ["w"]
         assert _sources(tmp_palace) == ["a.md", "b.md"]
         assert SyncLedger(tmp_palace / "sync_ledger.json").get("w")["last_run"]["failed"] == 0
+
+    def test_dockerfile_gets_drawers(self, reconcile_env, tmp_palace, monkeypatch):
+        repo, config, engine = reconcile_env
+        (config / "mempalace.yaml").write_text(
+            "sync:\n  extra_filenames: [Dockerfile]\nwings: {}\n"
+        )
+        (repo / "Dockerfile").write_text(
+            "FROM python:3.12-slim\nWORKDIR /app\nCOPY . .\n"
+            "RUN pip install --no-cache-dir -r requirements.txt\n"
+            'CMD ["python", "-m", "src.mcp_http_server"]\n'
+        )
+        _commit_all(repo)
+        monkeypatch.setattr("src.sync_engine.process_file", real_process_file)
+
+        engine().full_sync()
+
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["status"] == "synced"
+        assert entry["last_run"]["indexed"] == 1
+        assert _sources(tmp_palace) == ["Dockerfile"]
 
 
 def _ok_first(real_list):
