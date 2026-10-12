@@ -58,7 +58,9 @@ def test_path_under_registered_root_maps_to_wing(tmp_path, config):
             "inner": {"path": str(tmp_path / "Code" / "inner"), "wing": "inner-wing"},
         }
     )
-    assert repo_scope.wing_for_path(str(tmp_path / "Code" / "inner" / "src" / "a.py")) == "inner-wing"
+    assert (
+        repo_scope.wing_for_path(str(tmp_path / "Code" / "inner" / "src" / "a.py")) == "inner-wing"
+    )
     assert repo_scope.wing_for_path(str(tmp_path / "Code" / "other.py")) == "outer"
     roots = repo_scope.load_repo_roots()
     assert [wing for _, wing in roots] == ["inner-wing", "outer"]
@@ -113,3 +115,42 @@ def test_bash_target_paths_ignore_dev_null_and_use_cwd_for_relative():
     assert repo_scope.target_paths("Glob", {"pattern": "*.py", "path": "sub"}, "/repo") == [
         "/repo/sub"
     ]
+
+
+def test_malformed_repos_json_returns_no_roots(tmp_path, monkeypatch):
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir()
+    monkeypatch.setenv("MEMORY_CONFIG_DIR", str(config_dir))
+    for content in ("{not json", "[1, 2]", '{"a": "b"}'):
+        (config_dir / "repos.json").write_text(content)
+        assert repo_scope.load_repo_roots() == []
+        assert repo_scope.first_wing([str(tmp_path / "a.py")]) is None
+
+
+def test_first_wing_runs_git_for_at_most_one_target(tmp_path, config, monkeypatch):
+    """Several unregistered targets must not each pay for a git call."""
+    config({"proj": {"path": str(tmp_path / "Code" / "proj"), "wing": "proj-wing"}})
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 128, "", "")
+
+    repo_scope._git_common_dir.cache_clear()
+    monkeypatch.setattr(repo_scope.subprocess, "run", fake_run)
+    paths = []
+    for name in ("one", "two", "three", "four"):
+        (tmp_path / name).mkdir()
+        paths.append(str(tmp_path / name / "a.py"))
+    assert repo_scope.first_wing(paths) is None
+    assert len(calls) == 1
+
+
+def test_first_wing_prefers_registered_target_without_git(tmp_path, config, monkeypatch):
+    config({"proj": {"path": str(tmp_path / "Code" / "proj"), "wing": "proj-wing"}})
+    calls = []
+    monkeypatch.setattr(repo_scope.subprocess, "run", lambda *a, **k: calls.append(a))
+    (tmp_path / "other").mkdir()
+    paths = [str(tmp_path / "other" / "a.py"), str(tmp_path / "Code" / "proj" / "b.py")]
+    assert repo_scope.first_wing(paths) == "proj-wing"
+    assert calls == []

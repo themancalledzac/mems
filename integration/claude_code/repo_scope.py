@@ -113,13 +113,28 @@ def _origin_url(common_dir: str) -> str | None:
 
 
 def _wing_for_origin(url: str, roots: list[tuple[str, str]]) -> str | None:
-    local = url[len("file://"):] if url.startswith("file://") else url
+    local = url[len("file://") :] if url.startswith("file://") else url
     if local.startswith(("/", "~")):
         return _prefix_match(_normalize(local), roots)
     stem = url.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
     if stem.endswith(".git"):
         stem = stem[: -len(".git")]
     return _basename_match(stem, roots)
+
+
+def _wing_from_git(target: str, roots: list[tuple[str, str]]) -> str | None:
+    directory = _nearest_dir(target)
+    if directory is None:
+        return None
+    common_dir = _git_common_dir(directory)
+    if not common_dir:
+        return None
+    checkout = os.path.dirname(os.path.normpath(common_dir))
+    wing = _prefix_match(checkout, roots) or _basename_match(os.path.basename(checkout), roots)
+    if wing:
+        return wing
+    url = _origin_url(common_dir)
+    return _wing_for_origin(url, roots) if url else None
 
 
 def wing_for_path(path: str) -> str | None:
@@ -134,21 +149,7 @@ def wing_for_path(path: str) -> str | None:
     if not roots:
         return None
     target = _normalize(path)
-    wing = _prefix_match(target, roots)
-    if wing:
-        return wing
-    directory = _nearest_dir(target)
-    if directory is None:
-        return None
-    common_dir = _git_common_dir(directory)
-    if not common_dir:
-        return None
-    checkout = os.path.dirname(os.path.normpath(common_dir))
-    wing = _prefix_match(checkout, roots) or _basename_match(os.path.basename(checkout), roots)
-    if wing:
-        return wing
-    url = _origin_url(common_dir)
-    return _wing_for_origin(url, roots) if url else None
+    return _prefix_match(target, roots) or _wing_from_git(target, roots)
 
 
 def _shell_tokens(command: str) -> list[str]:
@@ -222,9 +223,17 @@ def target_paths(tool_name: str, tool_input: dict, cwd: str) -> list[str]:
 
 
 def first_wing(paths: list[str]) -> str | None:
-    """Return the wing of the first path that has one."""
-    for path in paths:
-        wing = wing_for_path(path)
+    """Return the wing of the first path under a registered root.
+
+    If none matches, only the first path gets the git fallback, so one hook call
+    runs at most one git process.
+    """
+    roots = load_repo_roots()
+    targets = [_normalize(path) for path in paths if path]
+    if not roots or not targets:
+        return None
+    for target in targets:
+        wing = _prefix_match(target, roots)
         if wing:
             return wing
-    return None
+    return _wing_from_git(targets[0], roots)

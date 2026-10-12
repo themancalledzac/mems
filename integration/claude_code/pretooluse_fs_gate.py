@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Claude Code PreToolUse hook: remind the model to search the palace before more filesystem discovery.
+"""Claude Code PreToolUse hook: remind the model to search the palace before more discovery.
 
-It reads the session transcript (or the subagent's own transcript), counts discovery calls since the
-last palace search, and warns at every multiple of the threshold when a target path belongs to a wing.
-Settings: `MEMPALACE_FS_GATE_MODE` (warn|block|off), `_THRESHOLD`, `_TAIL_BYTES` and `_HOLDOUT`
-(fraction of sessions left silent); a non-empty `MEMS_DIGEST` silences it, and every error fails open.
+It reads the session transcript (or the subagent's own transcript), counts discovery calls
+since the last palace search, and warns at every multiple of the threshold when a target path
+belongs to a wing. Settings: `MEMPALACE_FS_GATE_MODE` (warn|block|off), `_THRESHOLD`,
+`_TAIL_BYTES` and `_HOLDOUT` (fraction of sessions left silent); a non-empty `MEMS_DIGEST`
+silences it, and every error fails open.
 """
 
 from __future__ import annotations
@@ -61,15 +62,8 @@ repo_scope = _load_repo_scope()
 def is_discovery_command(command: str) -> bool:
     """True if any segment of a shell command leads with a discovery verb.
 
-    Splits on newlines, `;`, `|`, `&&`, `||` and inspects the first real token of
-    each segment. This catches the common multi-line probe:
-
-        cd /repo
-        echo "=== types ==="; sed -n '1,30p' app/types/GalleryFilter.ts
-        grep -rn "Content" tests
-
-    while leaving `git log --oneline | head` alone (no segment leads with a
-    discovery verb — `head` is not in the set).
+    Segments split on newlines, `;`, `|`, `&&` and `||`. Leading `VAR=value` tokens and
+    wrappers such as `sudo` or `xargs` are skipped before checking the verb.
     """
     if not command:
         return False
@@ -255,6 +249,8 @@ def evaluate(payload: dict) -> dict | None:
     """Decide what to emit for one hook payload. None means 'stay silent'."""
     if os.environ.get("MEMS_DIGEST"):
         return None
+    if is_held_out(payload.get("session_id")):
+        return None
     if payload.get("hook_event_name") != "PreToolUse":
         return None
     mode = _mode()
@@ -288,8 +284,6 @@ def evaluate(payload: dict) -> dict | None:
     run += 1
     threshold = _positive_int_env("MEMPALACE_FS_GATE_THRESHOLD", DEFAULT_THRESHOLD)
     if run < threshold or run % threshold != 0:
-        return None
-    if is_held_out(payload.get("session_id")):
         return None
 
     reminder = build_reminder(run, wing)

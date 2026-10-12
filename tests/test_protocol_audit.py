@@ -104,6 +104,24 @@ def test_mempalace_call_splits_runs(tmp_path):
     assert data["mem_calls"] == 1
 
 
+def test_read_of_file_edited_earlier_is_not_discovery(tmp_path):
+    """Re-reading a file the session already changed is a read-for-editing."""
+    _session(
+        tmp_path,
+        "repo-a",
+        [
+            ("Edit", {"file_path": "/repo/a.py"}),
+            ("Grep", {}),
+            ("Read", {"file_path": "/repo/a.py"}),
+            ("Grep", {}),
+        ],
+    )
+    data = protocol_audit.audit(projects_dir=tmp_path)
+    assert data["fs_calls"] == 2
+    assert data["violations"] == 0
+    assert data["longest_run"] == 2
+
+
 def test_non_discovery_bash_excluded(tmp_path):
     """`git commit` and `pytest` are not discovery and must not inflate the count."""
     _session(

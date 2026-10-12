@@ -1,4 +1,4 @@
-"""Measure how often filesystem discovery ran without a preceding palace search (`mems doctor --protocol`).
+"""Measure how often filesystem discovery ran without a palace search (`mems doctor --protocol`).
 
 Classification is imported from `integration/claude_code/pretooluse_fs_gate.py`, so the audit
 counts what the gate enforces. A run is the discovery calls between two palace searches

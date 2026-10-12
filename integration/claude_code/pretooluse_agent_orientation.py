@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude Code PreToolUse hook: block subagent dispatches that look like code work but omit the Memory Palace orientation block.
+"""Claude Code PreToolUse hook: block code-work subagent dispatches that omit the orientation block.
 
 Only Agent calls whose `subagent_type` is unset or in `GATED_SUBAGENT_TYPES` are checked, and the
 literal `# skip-mempalace-orientation` opts out. Install with `bash scripts/install_claude_code.sh`;

@@ -55,7 +55,9 @@ def _tool_use(name: str, tool_input: dict | None = None) -> str:
     )
 
 
-def _write_transcript(tmp_path: Path, calls: list[tuple[str, dict]], name: str = "transcript.jsonl") -> Path:
+def _write_transcript(
+    tmp_path: Path, calls: list[tuple[str, dict]], name: str = "transcript.jsonl"
+) -> Path:
     path = tmp_path / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(_tool_use(n, i) for n, i in calls) + "\n")
@@ -134,8 +136,8 @@ def test_screenshot_command_is_discovery():
     Leading `cd` and `echo` segments must not mask the `sed`/`grep` that follow.
     """
     command = (
-        'cd /Users/themancalledzac/Code/edens.zac\n'
-        'echo "=== GalleryFilter.ts:1-30 ==="; sed -n \'1,30p\' app/types/GalleryFilter.ts\n'
+        "cd /Users/themancalledzac/Code/edens.zac\n"
+        "echo \"=== GalleryFilter.ts:1-30 ===\"; sed -n '1,30p' app/types/GalleryFilter.ts\n"
         'echo "=== any barrel-index test? ==="; grep -rn "components/Content" tests | head\n'
     )
     assert gate.is_discovery_command(command)
@@ -259,8 +261,6 @@ def test_mempalace_call_silences_the_gate(tmp_path: Path):
     assert _reminder_of(out) is None
 
 
-
-
 def test_reminder_mentions_editing_read_exemption(tmp_path: Path):
     """False positives are tolerable only if the model is told how to judge them."""
     transcript = _write_transcript(tmp_path, [("Grep", {}), ("Read", {})])
@@ -382,9 +382,7 @@ def test_subagent_payload_uses_subagent_transcript(tmp_path: Path):
     out, _ = _run_hook(_payload(parent, agent_id="abc123", agent_type="general-purpose"))
     assert _reminder_of(out) is not None
 
-    _write_transcript(
-        tmp_path, [("Grep", {})], name="transcript/subagents/agent-quiet.jsonl"
-    )
+    _write_transcript(tmp_path, [("Grep", {})], name="transcript/subagents/agent-quiet.jsonl")
     out, _ = _run_hook(_payload(parent, agent_id="quiet", agent_type="general-purpose"))
     assert _reminder_of(out) is None
 
