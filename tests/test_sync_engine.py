@@ -627,3 +627,70 @@ class TestPruneWing:
         report = prune_wing(Broken(), "w", str(repo), {"x"})
         assert report["status"] == "error"
         assert "boom" in report["reason"]
+
+    def test_prune_normalises_dotdot_repo_path(self, prune_env, tmp_path):
+        repo, col = prune_env
+        (tmp_path / "b").mkdir()
+        dotted = str(tmp_path / "b" / ".." / "repo")
+        _drawers(col, [("a", _meta("w", repo / "a.md")), ("b", _meta("w", f"{dotted}/b.md"))])
+        keep = {f"{dotted}/a.md", f"{dotted}/b.md"}
+        report = prune_wing(col, "w", dotted, keep)
+        assert report["status"] == "ok"
+        assert report["removed"] == 0
+        assert report["would_remove"] == 0
+        assert _ids(col) == ["a", "b"]
+
+    def test_prune_reports_would_remove(self, prune_env):
+        repo, col = prune_env
+        _drawers(col, [("a", _meta("w", repo / "a.md")), ("b", _meta("w", repo / "b.md"))])
+        blocked = prune_wing(col, "w", str(repo), set())
+        assert blocked["status"] == "blocked"
+        assert blocked["would_remove"] == 2
+        assert blocked["removed"] == 0
+        ok = prune_wing(col, "w", str(repo), {str(repo / "a.md")})
+        assert ok["would_remove"] == 1
+        assert ok["removed"] == 1
+
+    def test_prune_partial_delete_failure_reports_removed(self, prune_env):
+        repo, col = prune_env
+        rows = [(f"g{i}", _meta("w", repo / f"g{i}.md")) for i in range(1500)]
+        rows += [("k", _meta("w", repo / "k.md"))]
+        _drawers(col, rows)
+
+        class FailSecondDelete:
+            def __init__(self, inner):
+                self.inner = inner
+                self.deletes = 0
+
+            def get(self, **kwargs):
+                return self.inner.get(**kwargs)
+
+            def delete(self, **kwargs):
+                self.deletes += 1
+                if self.deletes == 2:
+                    raise RuntimeError("disk full")
+                return self.inner.delete(**kwargs)
+
+        report = prune_wing(
+            FailSecondDelete(col), "w", str(repo), {str(repo / "k.md")}, allow_large=True
+        )
+        assert report["status"] == "error"
+        assert report["removed"] == 1000
+        assert report["scanned"] == 1501
+        assert report["would_remove"] == 1500
+        assert "disk full" in report["reason"]
+        assert col.count() == 501
+
+    def test_prune_closet_failure_deletes_no_drawers(self, prune_env):
+        repo, col = prune_env
+        _drawers(col, [("a", _meta("w", repo / "a.md")), ("b", _meta("w", repo / "b.md"))])
+
+        class BrokenClosets:
+            def delete(self, **kwargs):
+                raise RuntimeError("closets down")
+
+        report = prune_wing(col, "w", str(repo), {str(repo / "a.md")}, closets=BrokenClosets())
+        assert report["status"] == "error"
+        assert report["removed"] == 0
+        assert report["scanned"] == 2
+        assert _ids(col) == ["a", "b"]

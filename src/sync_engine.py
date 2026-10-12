@@ -1,8 +1,8 @@
 """Multi-repo git-diff sync orchestrator."""
 
 import json
-import subprocess
 import os
+import subprocess
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +18,6 @@ from mempalace.miner import (
     should_skip_dir,
 )
 from mempalace.palace import get_collection
-
 
 GIT_TIMEOUT_S = 30
 PRUNE_BATCH = 1000
@@ -50,7 +49,16 @@ def list_indexable_files(repo_path: str, sync_cfg: dict) -> list[Path]:
     """
     try:
         result = subprocess.run(
-            ["git", "-C", repo_path, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            [
+                "git",
+                "-C",
+                repo_path,
+                "ls-files",
+                "-z",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+            ],
             capture_output=True,
             timeout=GIT_TIMEOUT_S,
         )
@@ -96,12 +104,12 @@ def list_indexable_files(repo_path: str, sync_cfg: dict) -> list[Path]:
     return files
 
 
-
 def _prune_report(status: str, reason: str = "", **counts) -> dict:
     report = {
         "status": status,
         "scanned": 0,
         "removed": 0,
+        "would_remove": 0,
         "kept": 0,
         "no_source": 0,
         "out_of_scope": 0,
@@ -110,6 +118,10 @@ def _prune_report(status: str, reason: str = "", **counts) -> dict:
     }
     report.update(counts)
     return report
+
+
+def _norm_path(path: str) -> str:
+    return os.path.normpath(path)
 
 
 def prune_wing(
@@ -126,14 +138,17 @@ def prune_wing(
 
     Drawers with no source, sources outside the repo, and registry rows are kept. Refuses
     (status `blocked`) when `keep` is empty or the removal is large, unless `allow_large`.
-    Never raises; failures come back as status `error`. Closets for removed files in this
-    wing are purged when `closets` is given.
+    Never raises; on failure it returns status `error` with `removed` set to what was
+    actually deleted. Closets for removed files in this wing are purged first, when given.
     """
+    counts: dict = {}
+    removed = 0
     try:
         if not os.path.isdir(repo_path):
             return _prune_report("skipped", f"repo path not found: {repo_path}")
 
-        prefix = os.path.normpath(repo_path) + "/"
+        prefix = _norm_path(repo_path) + "/"
+        norm_keep = {_norm_path(k) for k in keep}
         scanned = no_source = out_of_scope = 0
         doomed: list[str] = []
         doomed_sources: Counter = Counter()
@@ -149,13 +164,14 @@ def prune_wing(
                 scanned += 1
                 meta = meta or {}
                 source = meta.get("source_file")
+                norm_source = _norm_path(source) if source else ""
                 if not source:
                     no_source += 1
-                elif not source.startswith(prefix):
+                elif not norm_source.startswith(prefix):
                     out_of_scope += 1
                 elif meta.get("room") == "_registry" or drawer_id.startswith("_reg_"):
                     continue
-                elif source not in keep:
+                elif norm_source not in norm_keep:
                     doomed.append(drawer_id)
                     doomed_sources[source] += 1
             if len(ids) < PRUNE_BATCH:
@@ -164,6 +180,8 @@ def prune_wing(
 
         counts = {
             "scanned": scanned,
+            "would_remove": len(doomed),
+            "kept": scanned,
             "no_source": no_source,
             "out_of_scope": out_of_scope,
             "top_sources": [
@@ -178,31 +196,34 @@ def prune_wing(
                 reason = f"prune would remove {len(doomed)} of {scanned} drawers"
             if reason:
                 return _prune_report(
-                    "blocked",
-                    f"{reason}; run `{LARGE_PRUNE_OVERRIDE}` to apply it",
-                    kept=scanned,
-                    **counts,
+                    "blocked", f"{reason}; run `{LARGE_PRUNE_OVERRIDE}` to apply it", **counts
                 )
 
-        if not dry_run:
-            for start in range(0, len(doomed), PRUNE_BATCH):
-                collection.delete(ids=doomed[start : start + PRUNE_BATCH])
-            sources = list(doomed_sources)
-            if closets is not None:
-                for start in range(0, len(sources), PRUNE_BATCH):
-                    closets.delete(
-                        where={
-                            "$and": [
-                                {"wing": wing},
-                                {"source_file": {"$in": sources[start : start + PRUNE_BATCH]}},
-                            ]
-                        }
-                    )
-        return _prune_report(
-            "ok", removed=len(doomed), kept=scanned - len(doomed), dry_run=dry_run, **counts
-        )
+        if dry_run:
+            counts["kept"] = scanned - len(doomed)
+            return _prune_report("ok", removed=len(doomed), dry_run=True, **counts)
+
+        sources = list(doomed_sources)
+        if closets is not None:
+            for start in range(0, len(sources), PRUNE_BATCH):
+                closets.delete(
+                    where={
+                        "$and": [
+                            {"wing": wing},
+                            {"source_file": {"$in": sources[start : start + PRUNE_BATCH]}},
+                        ]
+                    }
+                )
+        for start in range(0, len(doomed), PRUNE_BATCH):
+            batch = doomed[start : start + PRUNE_BATCH]
+            collection.delete(ids=batch)
+            removed += len(batch)
+        counts["kept"] = scanned - removed
+        return _prune_report("ok", removed=removed, dry_run=False, **counts)
     except Exception as exc:
-        return _prune_report("error", f"{type(exc).__name__}: {exc}")
+        if counts:
+            counts["kept"] = counts["scanned"] - removed
+        return _prune_report("error", f"{type(exc).__name__}: {exc}", removed=removed, **counts)
 
 
 class SyncLedger:
