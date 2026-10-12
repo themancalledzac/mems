@@ -21,7 +21,8 @@
 #   mempalace_list_rooms      -> local (distinct `room` metadata values, wing filter)
 #   mempalace_check_logs      -> local (collection.query over check content)
 #   mempalace_get_logs_recent -> local (collection.get sorted by timestamp desc)
-#   mempalace_search          -> wraps mempalace.searcher.search_memories, drops repeated chunks
+#   mempalace_search          -> wraps mempalace.searcher.search_memories (patched, see
+#                                patches/mempalace-3.6.0-keep-drawer-text.patch)
 #   mempalace_search_all      -> same, no filters
 #   mempalace_resync          -> delegates to handle_sync (full=full_refresh)
 #   mempalace_export_wing     -> local: assembles wing_meta, calls wing_pack.write_wingpack
@@ -73,7 +74,6 @@ DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 DEFAULT_EMBEDDING_DIM = 384
 
 _FETCH_PAGE = 1000
-_MAX_OVERFETCH = 9
 _SYNC_LOCK = threading.Lock()
 
 
@@ -307,43 +307,6 @@ def handle_get_logs_recent(palace_path: str, n: int = 10) -> list[dict]:
     return out
 
 
-def _hit_key(hit: dict) -> tuple:
-    """Identity of a hit's chunk. Upstream hits carry no drawer id, so source and text stand in."""
-    return (hit.get("source_path") or hit.get("source_file"), hit.get("text"))
-
-
-def _search_distinct(n: int, run) -> dict:
-    """Return `run(n)` with repeated chunks dropped, backfilled to `n` from larger `run` calls.
-
-    Upstream closet enrichment rewrites every boosted hit from one file to the same chunk. Upstream
-    also reorders its top hits when asked for more, so the first call's order is kept and larger
-    calls (3x each, up to `_MAX_OVERFETCH * n`) only append chunks not yet seen.
-    """
-    first = None
-    kept: list = []
-    seen: set = set()
-    fetch = n
-    while True:
-        result = run(fetch)
-        hits = result.get("results")
-        if hits is None:
-            if first is None:
-                return result
-            break
-        if first is None:
-            first = result
-        for h in hits:
-            key = _hit_key(h)
-            if key not in seen:
-                seen.add(key)
-                kept.append(h)
-        if len(kept) >= n or len(hits) < fetch or fetch >= n * _MAX_OVERFETCH:
-            break
-        fetch *= 3
-    first["results"] = kept[: max(0, n)]
-    return first
-
-
 def handle_search(
     palace_path: str,
     query: str,
@@ -354,26 +317,22 @@ def handle_search(
 ) -> dict:
     """Semantic search over the palace. `slug` is accepted as a wing alias.
 
-    Wraps upstream hybrid (drawers + closets) search and drops repeated chunks, backfilling to `n`.
+    Delegates to upstream hybrid (drawers + closets) search. Each hit carries its own drawer's text
+    only with patches/mempalace-3.6.0-keep-drawer-text.patch applied.
     """
     effective_wing = wing or slug
-    return _search_distinct(
-        n,
-        lambda k: search_memories(
-            query,
-            palace_path=palace_path,
-            wing=effective_wing,
-            room=room,
-            n_results=k,
-        ),
+    return search_memories(
+        query,
+        palace_path=palace_path,
+        wing=effective_wing,
+        room=room,
+        n_results=n,
     )
 
 
 def handle_search_all(palace_path: str, query: str, n: int = 10) -> dict:
-    """Unfiltered semantic search across every wing, with repeated chunks dropped."""
-    return _search_distinct(
-        n, lambda k: search_memories(query, palace_path=palace_path, n_results=k)
-    )
+    """Unfiltered semantic search across every wing."""
+    return search_memories(query, palace_path=palace_path, n_results=n)
 
 
 def handle_resync(

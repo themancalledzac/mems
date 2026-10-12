@@ -1,0 +1,86 @@
+--- a/mempalace/searcher.py
++++ b/mempalace/searcher.py
+@@ -1331,64 +1331,33 @@
+     scored.sort(key=lambda h: h["_sort_key"])
+     hits = scored[:n_results]
+ 
+-    # Drawer-grep enrichment: for closet-boosted hits whose source has
+-    # multiple drawers, return the keyword-best chunk + its immediate
+-    # neighbors instead of just the drawer vector search landed on. The
+-    # closet said "this source is relevant"; vector may have picked the
+-    # wrong chunk within it; grep picks the right one.
+-    MAX_HYDRATION_CHARS = 10000
++    # Closet-boosted hits keep their own drawer text: closets only affect
++    # ranking. Annotate each with its chunk position and the drawer count of
++    # its source, fetching each source (or parent group) once.
++    source_totals: dict = {}
+     for h in hits:
+         if h["matched_via"] == "drawer":
+             continue
+         full_source = h.get("_source_file_full") or ""
+         if not full_source:
+             continue
+-        # Narrow by ``parent_drawer_id`` when present so unrelated
+-        # chunked drawers sharing ``source_file`` do not stitch (#1580).
+-        try:
+-            source_drawers = drawers_col.get(
+-                where=_scoped_source_filter(full_source, h.get("_parent_drawer_id")),
+-                include=["documents", "metadatas"],
+-            )
+-        except Exception:
+-            logger.debug("Neighbor fetch failed for %s", full_source, exc_info=True)
+-            continue
+-        docs = source_drawers.documents
+-        metas_ = source_drawers.metadatas
+-        if len(docs) <= 1:
++        cache_key = (full_source, h.get("_parent_drawer_id"))
++        if cache_key not in source_totals:
++            try:
++                source_drawers = drawers_col.get(
++                    where=_scoped_source_filter(full_source, h.get("_parent_drawer_id")),
++                    include=["metadatas"],
++                )
++                source_totals[cache_key] = len(source_drawers.metadatas or [])
++            except Exception:
++                logger.debug("Source drawer count failed for %s", full_source, exc_info=True)
++                source_totals[cache_key] = None
++        total = source_totals[cache_key]
++        if total is None or total <= 1:
+             continue
++        h["drawer_index"] = h.get("_chunk_index")
++        h["total_drawers"] = total
+ 
+-        # Sort by chunk_index so best_idx + neighbors are positional.
+-        indexed = []
+-        for idx, (d, m) in enumerate(zip(docs, metas_)):
+-            ci = m.get("chunk_index", idx) if isinstance(m, dict) else idx
+-            if not isinstance(ci, int):
+-                ci = idx
+-            indexed.append((ci, d))
+-        indexed.sort(key=lambda p: p[0])
+-        ordered_docs = [d for _, d in indexed]
+-
+-        query_terms = set(_tokenize(query))
+-        best_idx, best_score = 0, -1
+-        for idx, d in enumerate(ordered_docs):
+-            d_lower = d.lower()
+-            s = sum(1 for t in query_terms if t in d_lower)
+-            if s > best_score:
+-                best_score, best_idx = s, idx
+-
+-        start = max(0, best_idx - 1)
+-        end = min(len(ordered_docs), best_idx + 2)
+-        expanded = "\n\n".join(ordered_docs[start:end])
+-        if len(expanded) > MAX_HYDRATION_CHARS:
+-            expanded = (
+-                expanded[:MAX_HYDRATION_CHARS]
+-                + f"\n\n[...truncated. {len(ordered_docs)} total drawers. "
+-                "Use mempalace_get_drawer for full content.]"
+-            )
+-        h["text"] = expanded
+-        h["drawer_index"] = best_idx
+-        h["total_drawers"] = len(ordered_docs)
+-
+     # Candidate strategy hook: optionally widen the rerank pool's *source*
+     # before ranking. Default ("vector") is a no-op; "union" merges top-K
+     # backend lexical candidates. See `_apply_candidate_strategy`.

@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git curl \
+    && apt-get install -y --no-install-recommends git curl patch \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -20,6 +20,9 @@ COPY pyproject.toml README.md ./
 COPY src/ src/
 COPY mems_cli/ mems_cli/
 RUN pip install --no-cache-dir .
+COPY patches/ patches/
+COPY scripts/apply_mempalace_patch.sh scripts/
+RUN scripts/apply_mempalace_patch.sh python
 RUN python -c "from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2; ONNXMiniLM_L6_V2()(['warmup'])"
 COPY config/ /config/
 COPY entrypoint.sh ./

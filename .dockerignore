@@ -1,5 +1,5 @@
 # Build-context hygiene. The Dockerfile COPYs only pyproject.toml, README.md,
-# src/, mems_cli/, config/, and entrypoint.sh — everything below is unneeded
+# src/, mems_cli/, patches/, scripts/apply_mempalace_patch.sh, config/, and entrypoint.sh — everything below is unneeded
 # context that would otherwise be shipped to the daemon on every build.
 .venv/
 .git/
@@ -16,6 +16,7 @@ __pycache__/
 tests/
 docs/
 scripts/
+!scripts/apply_mempalace_patch.sh
 exports/
 palace/
 .todo/
