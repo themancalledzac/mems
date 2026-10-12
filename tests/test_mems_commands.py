@@ -11,8 +11,6 @@ from unittest.mock import MagicMock
 
 from mems_cli.main import main
 
-# --- shared helpers -----------------------------------------------------------
-
 
 class _FakePalaceClient:
     """Drop-in for PalaceClient. Records calls; returns a canned value."""
@@ -58,9 +56,6 @@ def _install_fake_palace(monkeypatch, return_value=None):
     return _Factory
 
 
-# --- 1. repo registry: add + list round-trip ---------------------------------
-
-
 def test_repo_add_and_list_roundtrip(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MEMORY_CONFIG_DIR", str(tmp_path / "cfg"))
 
@@ -96,9 +91,6 @@ def test_repo_add_rejects_non_git_path(tmp_path, monkeypatch, capsys):
     assert "not a git repo" in err
 
 
-# --- 2. publishing: dry-run calls publish_to_repo -----------------------------
-
-
 def test_publish_dry_run_invokes_publish_to_repo(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MEMORY_CONFIG_DIR", str(tmp_path / "cfg"))
 
@@ -130,9 +122,6 @@ def test_publish_dry_run_invokes_publish_to_repo(tmp_path, monkeypatch, capsys):
     assert kwargs["repo_root"] == type(kwargs["repo_root"])(repo)
 
 
-# --- 3. palace_ops: status hits memory_sync_status ---------------------------
-
-
 def test_status_calls_memory_sync_status(monkeypatch, capsys):
     return_value = {
         "structuredContent": {
@@ -155,9 +144,6 @@ def test_status_calls_memory_sync_status(monkeypatch, capsys):
     assert _FakePalaceClient.last_instance is not None
     calls = _FakePalaceClient.last_instance.calls
     assert calls[0][0] == "memory_sync_status"
-
-
-# --- 4. search: correct tool + args ------------------------------------------
 
 
 def test_search_wing_calls_mempalace_search(monkeypatch):
@@ -185,7 +171,9 @@ def test_search_human_output_shows_path_and_snippet(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "src/x.py" in out
     assert "the matching content" in out
-    assert "?" not in out.splitlines()[0].split("(")[0]
+    first = out.splitlines()[0]
+    assert first.endswith("src/x.py")
+    assert "?" not in first
 
 
 def test_search_without_wing_calls_search_all(monkeypatch):
@@ -193,9 +181,6 @@ def test_search_without_wing_calls_search_all(monkeypatch):
     assert main(["search", "something"]) == 0
     calls = _FakePalaceClient.last_instance.calls
     assert calls[0][0] == "mempalace_search_all"
-
-
-# --- 5. tickets: missing env -> exit 1 with clear error ----------------------
 
 
 def test_ticket_list_missing_env_errors_clearly(monkeypatch, capsys):
@@ -207,9 +192,6 @@ def test_ticket_list_missing_env_errors_clearly(monkeypatch, capsys):
     assert "JIRA_URL" in err
     assert "JIRA_EMAIL" in err
     assert "JIRA_API_TOKEN" in err
-
-
-# --- 6. hybrid: joins Jira + palace ------------------------------------------
 
 
 def test_hybrid_joins_jira_and_palace(monkeypatch, capsys):
@@ -262,9 +244,6 @@ def test_hybrid_joins_jira_and_palace(monkeypatch, capsys):
     assert "Fix the bug" in out
     assert "src/thing.py" in out
     assert "matching palace drawer" in out
-
-
-# --- 7. palace_ops shell-out: `mems make` delegates to `mempalace init` ------
 
 
 def test_mems_make_shells_out_to_mempalace_init(monkeypatch, tmp_path):
