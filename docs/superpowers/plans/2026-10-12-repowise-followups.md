@@ -447,7 +447,7 @@ Tests:
 - `test_union_error_falls_back_to_vector`
 - `test_union_finds_vector_distant_identifier` (real Chroma; skip below 3.6)
 
-**Rot:** check the `handle_search` docblock's "hybrid (drawers + closets)" claim against the code. Sync has created closets since MR-1 (1,090 on 2026-10-12). Closet-boosted hits used to repeat one chunk many times; `_search_distinct` in `src/tools.py` now drops the repeats (commit `fe3a678`).
+**Rot:** check the `handle_search` docblock's "hybrid (drawers + closets)" claim against the code. Sync has created closets since MR-1 (1,090 on 2026-10-12). Closet-boosted hits used to repeat one chunk many times because upstream rewrote their text. Memory carries `patches/mempalace-3.6.0-keep-drawer-text.patch` so each hit keeps its own drawer's text; `handle_search` calls upstream directly. Drop the patch once an upstream release has the fix.
 
 **Follow-up, not in this MR:** file an upstream issue. `_lexical_search_via_sqlite` has no `ORDER BY rank`, and the filtered path has no `LIMIT`.
 

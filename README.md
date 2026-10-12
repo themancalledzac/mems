@@ -301,11 +301,19 @@ wingpack publish refused, IDE doesn't see tools, etc.).
 
 ```bash
 uv sync --extra dev                # builds .venv from uv.lock
+scripts/apply_mempalace_patch.sh   # patches mempalace in .venv; rerun after every uv sync
 
 .venv/bin/python -m pytest -q      # full test suite (bare pytest picks up the wrong tests package)
 ruff check src/ mems_cli/ tests/   # lint
 ruff format src/ mems_cli/ tests/  # format (check with --check)
 ```
+
+Memory carries one patch to mempalace 3.6.0 in `patches/`. Upstream rewrites every
+closet-boosted search hit from one file to that file's best passage, so distinct drawers
+come back with the same text. The patch keeps each hit's own drawer text. The Docker build
+applies it with the same script and fails if it no longer applies.
+`tests/test_search_dedup.py` fails on an unpatched `.venv`. Drop the patch, the script and
+the Dockerfile step once an upstream release keeps drawer text on closet hits.
 
 The CLI package (`mems_cli/`) is standard argparse dispatch; add a new
 subcommand by writing a `register(subparsers)` function in
