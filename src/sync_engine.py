@@ -6,8 +6,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from mempalace.miner import process_file, scan_project
+from mempalace.miner import (
+    MAX_FILE_SIZE,
+    READABLE_EXTENSIONS,
+    SKIP_FILENAMES,
+    GitignoreMatcher,
+    process_file,
+    scan_project,
+    should_skip_dir,
+)
 from mempalace.palace import get_collection
+
+
+class SyncSourceError(Exception):
+    """A wing's repo could not be listed, so nothing should be pruned from it."""
 
 
 def _flatten_rooms(wing_def: dict) -> list:
@@ -18,6 +30,55 @@ def _flatten_rooms(wing_def: dict) -> list:
         for room in hall_def.get("rooms", []) or []:
             flat.append(room)
     return flat
+
+
+def list_indexable_files(repo_path: str, sync_cfg: dict) -> list[Path]:
+    """Files to keep for a wing: git ls-files -z --cached --others --exclude-standard, filtered.
+
+    Raises SyncSourceError when git fails. Paths are `Path(repo_path) / rel` and are
+    never resolved, so they match stored `source_file` values.
+    """
+    result = subprocess.run(
+        ["git", "-C", repo_path, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise SyncSourceError(result.stderr.decode("utf-8", errors="replace").strip())
+
+    root = Path(repo_path)
+    exclude = sync_cfg.get("exclude") or []
+    exclude_matcher = GitignoreMatcher.from_patterns(root, exclude) if exclude else None
+    data_cap = sync_cfg.get("max_data_file_bytes")
+    data_exts = {e.lower() for e in sync_cfg.get("data_extensions") or []}
+
+    rels = dict.fromkeys(
+        r for r in result.stdout.decode("utf-8", errors="surrogateescape").split("\0") if r
+    )
+    files = []
+    for rel in rels:
+        if rel.endswith("/"):
+            continue
+        parts = rel.split("/")
+        if parts[-1] in SKIP_FILENAMES or any(should_skip_dir(d) for d in parts[:-1]):
+            continue
+        path = root / rel
+        suffix = path.suffix.lower()
+        if suffix not in READABLE_EXTENSIONS:
+            continue
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        if size > MAX_FILE_SIZE:
+            continue
+        if data_cap is not None and suffix in data_exts and size > data_cap:
+            continue
+        if exclude_matcher and exclude_matcher.matches(path, is_dir=False):
+            continue
+        files.append(path)
+    return files
 
 
 class SyncLedger:

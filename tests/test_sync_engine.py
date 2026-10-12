@@ -3,7 +3,17 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-from src.sync_engine import SyncEngine, SyncLedger, get_changed_files, get_head_sha
+import pytest
+from mempalace.miner import GitignoreMatcher
+
+from src.sync_engine import (
+    SyncEngine,
+    SyncLedger,
+    SyncSourceError,
+    get_changed_files,
+    get_head_sha,
+    list_indexable_files,
+)
 
 
 class TestSyncLedger:
@@ -69,7 +79,6 @@ class TestGitOps:
         assert sha is None
 
     def test_get_changed_files(self, mock_repo):
-        # Make a second commit with changes
         (mock_repo / "new_file.py").write_text("x = 1\n")
         (mock_repo / "hello.py").write_text("print('updated')\n")
         subprocess.run(["git", "add", "."], cwd=mock_repo, capture_output=True)
@@ -79,7 +88,6 @@ class TestGitOps:
             capture_output=True,
         )
 
-        # Get the first commit SHA
         result = subprocess.run(
             ["git", "log", "--reverse", "--format=%H"],
             cwd=mock_repo,
@@ -109,7 +117,6 @@ class TestSyncEngine:
         assert "test-wing" in engine.repos
 
     def test_full_sync_indexes_repo(self, tmp_config, tmp_palace, mock_repo):
-        # Point config at the mock repo
         repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
@@ -158,7 +165,6 @@ class TestSyncEngine:
             data_path=str(tmp_palace),
         )
 
-        # Simulate a previous full sync
         sha = get_head_sha(str(mock_repo))
         engine.ledger.update(
             "test-wing",
@@ -197,7 +203,6 @@ class TestSyncEngine:
             },
         )
 
-        # Add a new file and commit
         (mock_repo / "added.py").write_text("y = 2\n")
         subprocess.run(["git", "add", "."], cwd=mock_repo, capture_output=True)
         subprocess.run(
@@ -234,7 +239,6 @@ class TestSyncEngine:
         ):
             engine.full_sync(wing_name="test-wing")
 
-        # Only test-wing should be synced
         mock_scan.assert_called_once()
         assert engine.ledger.get("test-wing") is not None
         assert engine.ledger.get("other-wing") is None
@@ -254,7 +258,6 @@ def test_full_sync_calls_mempalace_sync_after_ingest(
 
     def fake_subprocess_run(cmd, *args, **kwargs):
         calls.append(cmd)
-        # Let git-related commands run for real (used by sync_engine for HEAD sha + diff).
         if cmd and isinstance(cmd, list) and cmd[0] == "git":
             return real_run(cmd, *args, **kwargs)
         return R()
@@ -273,12 +276,138 @@ def test_full_sync_calls_mempalace_sync_after_ingest(
 
     engine.full_sync()
 
-    # Look for `mempalace sync` in subprocess calls. Match the literal argv
-    # (cmd[0] == "mempalace" and "sync" appears as a separate argv token) so
-    # tmp_path strings that contain "mempalace"/"sync" don't false-positive.
     sync_calls = [
         c
         for c in calls
         if isinstance(c, list) and len(c) >= 2 and c[0] == "mempalace" and "sync" in c
     ]
     assert sync_calls, f"expected `mempalace sync` post-ingest call; got {calls}"
+
+
+def _git(repo, *args):
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _init_repo(path):
+    path.mkdir(parents=True, exist_ok=True)
+    _git(path, "init", "-q")
+    return path
+
+
+def _commit_all(repo):
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "c")
+
+
+def _rel(repo, files):
+    return sorted(p.relative_to(repo).as_posix() for p in files)
+
+
+class TestListIndexableFiles:
+    def test_indexable_excludes_gitignored_dir(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / ".gitignore").write_text("output/\n")
+        (repo / "output").mkdir()
+        (repo / "output" / "dump.md").write_text("x")
+        (repo / "keep.md").write_text("x")
+        _commit_all(repo)
+        assert _rel(repo, list_indexable_files(str(repo), {})) == ["keep.md"]
+
+    def test_indexable_includes_untracked_not_ignored(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "a.md").write_text("x")
+        _commit_all(repo)
+        (repo / "new.py").write_text("x")
+        assert _rel(repo, list_indexable_files(str(repo), {})) == ["a.md", "new.py"]
+
+    def test_indexable_honors_git_info_exclude(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / ".git" / "info").mkdir(exist_ok=True)
+        (repo / ".git" / "info" / "exclude").write_text("secret.md\n")
+        (repo / "secret.md").write_text("x")
+        (repo / "open.md").write_text("x")
+        assert _rel(repo, list_indexable_files(str(repo), {})) == ["open.md"]
+
+    def test_indexable_skips_nested_repo_dir(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "top.md").write_text("x")
+        nested = _init_repo(repo / "wt")
+        (nested / "inner.md").write_text("x")
+        _commit_all(nested)
+        assert _rel(repo, list_indexable_files(str(repo), {})) == ["top.md"]
+
+    def test_indexable_applies_upstream_filters(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "package-lock.json").write_text("{}")
+        (repo / "logo.png").write_bytes(b"\x89PNG")
+        (repo / "real.md").write_text("x")
+        (repo / "link.md").symlink_to(repo / "real.md")
+        (repo / "node_modules").mkdir()
+        (repo / "node_modules" / "dep.js").write_text("x")
+        (repo / "UPPER.MD").write_text("x")
+        _commit_all(repo)
+        assert _rel(repo, list_indexable_files(str(repo), {})) == ["UPPER.MD", "real.md"]
+
+    def test_indexable_unborn_head_lists_files(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "main.go").write_text("package main")
+        (repo / "staged.md").write_text("x")
+        _git(repo, "add", "staged.md")
+        assert _rel(repo, list_indexable_files(str(repo), {})) == ["main.go", "staged.md"]
+
+    def test_indexable_drops_tracked_file_deleted_from_disk(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "gone.md").write_text("x")
+        (repo / "here.md").write_text("x")
+        _commit_all(repo)
+        (repo / "gone.md").unlink()
+        assert _rel(repo, list_indexable_files(str(repo), {})) == ["here.md"]
+
+    def test_indexable_unquoted_paths(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "café.md").write_text("x")
+        (repo / "sp ace.md").write_text("x")
+        _commit_all(repo)
+        files = list_indexable_files(str(repo), {})
+        assert sorted(f.name for f in files) == ["café.md", "sp ace.md"]
+        assert all(f.is_file() for f in files)
+        assert all(str(f).startswith(str(repo) + "/") for f in files)
+
+    @pytest.mark.skipif(
+        not hasattr(GitignoreMatcher, "from_patterns"),
+        reason="GitignoreMatcher.from_patterns needs mempalace >= 3.6.0",
+    )
+    def test_indexable_config_exclude_patterns(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / ".claude" / ".cc-writes").mkdir(parents=True)
+        (repo / ".claude" / ".cc-writes" / "w.json").write_text("{}")
+        (repo / ".claude" / "settings.local.json").write_text("{}")
+        (repo / ".claude" / "settings.json").write_text("{}")
+        (repo / "sub" / ".claude").mkdir(parents=True)
+        (repo / "sub" / ".claude" / "settings.local.json").write_text("{}")
+        cfg = {"exclude": ["**/.claude/settings.local.json", "**/.claude/.cc-writes/**"]}
+        assert _rel(repo, list_indexable_files(str(repo), cfg)) == [".claude/settings.json"]
+
+    def test_indexable_data_size_cap_only_hits_data_extensions(self, tmp_path):
+        repo = _init_repo(tmp_path / "r")
+        (repo / "big.json").write_text("x" * 200)
+        (repo / "big.md").write_text("x" * 200)
+        (repo / "small.csv").write_text("x" * 10)
+        cfg = {"max_data_file_bytes": 100, "data_extensions": [".json", ".jsonl", ".csv"]}
+        assert _rel(repo, list_indexable_files(str(repo), cfg)) == ["big.md", "small.csv"]
+        assert _rel(repo, list_indexable_files(str(repo), {"max_data_file_bytes": None})) == [
+            "big.json",
+            "big.md",
+            "small.csv",
+        ]
+
+    def test_indexable_raises_on_non_git_dir(self, tmp_path):
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        (plain / "a.md").write_text("x")
+        with pytest.raises(SyncSourceError, match="(?i)not a git repository"):
+            list_indexable_files(str(plain), {})
