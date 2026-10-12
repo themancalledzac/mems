@@ -1,65 +1,27 @@
 #!/usr/bin/env python3
-"""Claude Code PreToolUse hook: gate naked filesystem discovery on mempalace usage.
+"""Claude Code PreToolUse hook: remind the model to search the palace before more filesystem discovery.
 
-This is the structural counterpart to `pretooluse_agent_orientation.py`. That hook
-gates *subagent dispatch*; this one gates the *parent loop* — the case CLAUDE.md
-Hard Rule #1 covers and which procedural enforcement measurably fails to catch
-(83% of filesystem batches ran with no preceding mempalace call, measured across
-83 sessions on 2026-08-22; see `mems doctor --protocol`).
-
-Why this is not the "doom loop" the audit tracker ruled out
------------------------------------------------------------
-`docs/protocol-audit-tracker.md` previously marked this OPEN-U on the reasoning
-that such a hook "either calls mempalace or reads a ledger that gets stale."
-Both horns are avoidable. This hook reads the **session transcript** that Claude
-Code hands it on stdin, counts consecutive filesystem tool calls since the last
-`mempalace_*` call, and decides from that. It calls no MCP tool (no recursion)
-and keeps no state file (nothing to go stale) — the transcript is the ground
-truth and reading it is plain local file I/O.
-
-The warn cadence is likewise stateless: it fires when the run length is an exact
-multiple of the threshold (3, 6, 9, ...), so there is no "have I already warned?"
-bookkeeping to drift out of sync.
-
-Behavior
---------
-- Only `Bash`/`Grep`/`Glob`/`Read`/`LS`/`NotebookRead` events are considered.
-- `Bash` is further filtered to *discovery* commands (see `is_discovery_command`),
-  so `git commit`, `pytest`, and `npm run build` never trip the gate.
-- Default mode is `warn`: it injects a reminder the model sees, and the tool call
-  proceeds. Set `MEMPALACE_FS_GATE_MODE=block` to deny instead.
-- Fails open on every error path. A hook that bricks the harness is worse than a
-  hook that misses a violation.
-
-Environment
------------
-    MEMPALACE_FS_GATE_THRESHOLD   int, default 3   consecutive FS calls before warning
-    MEMPALACE_FS_GATE_MODE        warn|block|off,  default warn
-    MEMPALACE_FS_GATE_TAIL_BYTES  int, default 524288  transcript tail window
-
-Install via `bash scripts/install_claude_code.sh`.
-Tested by tests/test_pretooluse_fs_gate.py.
+It reads the session transcript (or the subagent's own transcript), counts discovery calls since the
+last palace search, and warns at every multiple of the threshold when a target path belongs to a wing.
+Settings: `MEMPALACE_FS_GATE_MODE` (warn|block|off), `_THRESHOLD`, `_TAIL_BYTES` and `_HOLDOUT`
+(fraction of sessions left silent); a non-empty `MEMS_DIGEST` silences it, and every error fails open.
 """
 
 from __future__ import annotations
 
+import hashlib
+import importlib.util
 import json
 import os
 import re
 import sys
 from pathlib import Path
 
-# Tools that count as filesystem discovery on their own.
-FS_TOOLS = {"Grep", "Glob", "Read", "LS", "NotebookRead"}
-
-# Bash is conditional — only discovery-shaped commands count.
+FS_TOOLS = {"Grep", "Glob", "Read"}
 BASH_TOOL = "Bash"
+SEARCH_TOOLS = {"mempalace_search", "mempalace_search_all", "mempalace_user_search"}
+EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
-# Commands that mean "I am looking for something in the tree".
-#
-# `head`/`tail` are deliberately EXCLUDED: they appear overwhelmingly as pagers
-# on non-discovery pipelines (`git log | head`) and including them produced
-# false positives in the 2026-08-22 measurement.
 DISCOVERY_COMMANDS = {
     "grep",
     "rg",
@@ -75,16 +37,25 @@ DISCOVERY_COMMANDS = {
     "bat",
 }
 
-# Segment separators inside a compound shell command.
 _SEGMENT_SPLIT_RE = re.compile(r"[\n;|]|&&|\|\|")
-
-# Leading tokens that wrap a real command without being one themselves.
 _WRAPPER_TOKENS = {"sudo", "command", "time", "nice", "xargs", "env"}
-
-MEMPALACE_MARKER = "mempalace"
 
 DEFAULT_THRESHOLD = 3
 DEFAULT_TAIL_BYTES = 512 * 1024
+
+
+def _load_repo_scope():
+    path = Path(__file__).resolve().parent / "repo_scope.py"
+    try:
+        spec = importlib.util.spec_from_file_location("repo_scope", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        return None
+    return module
+
+
+repo_scope = _load_repo_scope()
 
 
 def is_discovery_command(command: str) -> bool:
@@ -105,7 +76,6 @@ def is_discovery_command(command: str) -> bool:
     for segment in _SEGMENT_SPLIT_RE.split(command):
         tokens = segment.strip().split()
         idx = 0
-        # Skip env-var assignments (FOO=bar cmd) and wrapper tokens.
         while idx < len(tokens) and ("=" in tokens[idx] or tokens[idx] in _WRAPPER_TOKENS):
             idx += 1
         if idx >= len(tokens):
@@ -119,12 +89,12 @@ def is_discovery_command(command: str) -> bool:
 def classify_tool(tool_name: str, tool_input: dict | None) -> str:
     """Classify one tool call as 'MEM', 'FS', or 'OTHER'.
 
-    Shared with `mems_cli.protocol_audit` so the gate and the measurement always
-    agree on what counts as a violation.
+    Only the three palace search tools count as 'MEM'; other mempalace tools are 'OTHER'.
+    Shared with `mems_cli.protocol_audit` so the gate and the audit agree.
     """
     if not tool_name:
         return "OTHER"
-    if MEMPALACE_MARKER in tool_name:
+    if tool_name.rsplit("__", 1)[-1] in SEARCH_TOOLS:
         return "MEM"
     if tool_name in FS_TOOLS:
         return "FS"
@@ -134,7 +104,41 @@ def classify_tool(tool_name: str, tool_input: dict | None) -> str:
     return "OTHER"
 
 
-def _iter_tool_calls(lines):
+def _edited_path(tool_name: str, tool_input: dict) -> str | None:
+    if tool_name not in EDIT_TOOLS:
+        return None
+    path = tool_input.get("file_path") or tool_input.get("notebook_path")
+    return os.path.normpath(path) if isinstance(path, str) and path else None
+
+
+def _read_path(tool_name: str, tool_input: dict) -> str | None:
+    if tool_name != "Read":
+        return None
+    path = tool_input.get("file_path")
+    return os.path.normpath(path) if isinstance(path, str) and path else None
+
+
+def classify_calls(calls, edited: set[str] | None = None):
+    """Yield the kind of each (tool_name, tool_input) call in order.
+
+    A Read of a file already edited or written earlier counts as 'OTHER'. Pass `edited` to
+    collect the edited paths.
+    """
+    edited = set() if edited is None else edited
+    for tool_name, tool_input in calls:
+        tool_input = tool_input if isinstance(tool_input, dict) else {}
+        path = _edited_path(tool_name, tool_input)
+        if path:
+            edited.add(path)
+            yield "OTHER"
+            continue
+        if _read_path(tool_name, tool_input) in edited:
+            yield "OTHER"
+            continue
+        yield classify_tool(tool_name, tool_input)
+
+
+def iter_tool_calls(lines):
     """Yield (tool_name, tool_input) for each tool_use block in transcript lines."""
     for line in lines:
         line = line.strip()
@@ -156,32 +160,23 @@ def _iter_tool_calls(lines):
 def read_transcript_tail(path: Path, tail_bytes: int = DEFAULT_TAIL_BYTES) -> list[str]:
     """Read the last `tail_bytes` of a JSONL transcript as whole lines.
 
-    Transcripts reach many megabytes; this hook runs before every filesystem call,
-    so we only look at the recent window. Truncating can only *shorten* the run we
-    observe, and a short run errs toward not warning — the safe direction.
+    Truncation can only shorten the observed run, which errs toward not warning.
     """
     with path.open("rb") as handle:
         handle.seek(0, os.SEEK_END)
         size = handle.tell()
         handle.seek(max(0, size - tail_bytes))
         chunk = handle.read()
-    text = chunk.decode("utf-8", errors="replace")
-    lines = text.split("\n")
+    lines = chunk.decode("utf-8", errors="replace").split("\n")
     if size > tail_bytes and lines:
-        # First line is probably a partial record from mid-file.
         lines = lines[1:]
     return lines
 
 
-def uncovered_run_length(lines) -> int:
-    """Count filesystem calls since the last mempalace call in the transcript.
-
-    Walks forward and resets on every mempalace call, so the returned value is the
-    length of the trailing uncovered run.
-    """
+def uncovered_run_length(lines, edited: set[str] | None = None) -> int:
+    """Count filesystem calls since the last palace search in the transcript."""
     run = 0
-    for tool_name, tool_input in _iter_tool_calls(lines):
-        kind = classify_tool(tool_name, tool_input)
+    for kind in classify_calls(iter_tool_calls(lines), edited):
         if kind == "MEM":
             run = 0
         elif kind == "FS":
@@ -189,54 +184,55 @@ def uncovered_run_length(lines) -> int:
     return run
 
 
-def derive_transcript_path(payload: dict) -> Path | None:
-    """Locate the session transcript.
-
-    Prefers the `transcript_path` the hook contract supplies. Falls back to
-    reconstructing `~/.claude/projects/<mangled-cwd>/<session_id>.jsonl` so the
-    gate keeps working if that field is ever absent.
-    """
+def _session_transcript(payload: dict) -> Path | None:
     explicit = payload.get("transcript_path")
     if explicit:
-        candidate = Path(explicit).expanduser()
-        if candidate.is_file():
-            return candidate
-
+        return Path(explicit).expanduser()
     session_id = payload.get("session_id")
     cwd = payload.get("cwd")
     if not session_id or not cwd:
         return None
     mangled = re.sub(r"[^A-Za-z0-9]", "-", str(cwd))
-    candidate = Path.home() / ".claude" / "projects" / mangled / f"{session_id}.jsonl"
+    return Path.home() / ".claude" / "projects" / mangled / f"{session_id}.jsonl"
+
+
+def derive_transcript_path(payload: dict) -> Path | None:
+    """Locate the transcript of the agent making this call.
+
+    A payload with `agent_id` comes from a subagent, whose transcript is
+    `<session transcript without .jsonl>/subagents/agent-<agent_id>.jsonl`.
+    """
+    session = _session_transcript(payload)
+    if session is None:
+        return None
+    agent_id = payload.get("agent_id")
+    if agent_id:
+        candidate = session.with_suffix("") / "subagents" / f"agent-{agent_id}.jsonl"
+    else:
+        candidate = session
     return candidate if candidate.is_file() else None
 
 
-def guess_wing(cwd: str | None) -> str | None:
-    """Best-effort repo-dir -> wing-slug guess for the reminder text."""
-    if not cwd:
-        return None
-    name = Path(str(cwd)).name
-    if not name:
-        return None
-    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or None
+def is_held_out(session_id: str | None) -> bool:
+    """True when `MEMPALACE_FS_GATE_HOLDOUT` places this session in the silent group."""
+    raw = os.environ.get("MEMPALACE_FS_GATE_HOLDOUT")
+    if not raw or not session_id:
+        return False
+    try:
+        fraction = float(raw)
+    except ValueError:
+        return False
+    bucket = int(hashlib.sha1(str(session_id).encode()).hexdigest()[:8], 16) % 100
+    return bucket < fraction * 100
 
 
-def build_reminder(run: int, wing: str | None) -> str:
+def build_reminder(run: int, wing: str) -> str:
     """The message injected back into the model's context."""
-    if wing:
-        target = f'mempalace_search(query="<what you are looking for>", wing="{wing}")'
-    else:
-        target = "mempalace_search"
     return (
-        f"MEMORY PALACE GATE: {run} consecutive filesystem discovery calls with no "
-        f"mempalace search in between.\n\n"
-        f"CLAUDE.md Hard Rule #1 requires a mempalace search before each batch of 2+ "
-        f"Grep/Glob/Read/Bash discovery calls. The palace has already indexed this repo — "
-        f"searching it is faster than grepping and returns the surrounding context.\n\n"
-        f"Run this before continuing:\n    {target}\n\n"
-        f"If these are reads-for-editing (loading a file you are about to modify), the "
-        f"per-batch rule does not apply and you may proceed — that exemption is real, "
-        f"but it does not cover discovery reads."
+        f"MEMORY PALACE GATE: {run} filesystem discovery calls in a row with no palace search.\n\n"
+        f"Search before the next batch:\n"
+        f'    mempalace_search(query="<what you are looking for>", wing="{wing}")\n\n'
+        f"Exempt: reads-for-editing (a file you are about to change)."
     )
 
 
@@ -244,35 +240,25 @@ def _mode() -> str:
     return (os.environ.get("MEMPALACE_FS_GATE_MODE") or "warn").strip().lower()
 
 
-def _threshold() -> int:
-    raw = os.environ.get("MEMPALACE_FS_GATE_THRESHOLD")
+def _positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
     if not raw:
-        return DEFAULT_THRESHOLD
+        return default
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        return DEFAULT_THRESHOLD
-    return value if value > 0 else DEFAULT_THRESHOLD
-
-
-def _tail_bytes() -> int:
-    raw = os.environ.get("MEMPALACE_FS_GATE_TAIL_BYTES")
-    if not raw:
-        return DEFAULT_TAIL_BYTES
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return DEFAULT_TAIL_BYTES
-    return value if value > 0 else DEFAULT_TAIL_BYTES
+        return default
+    return value if value > 0 else default
 
 
 def evaluate(payload: dict) -> dict | None:
     """Decide what to emit for one hook payload. None means 'stay silent'."""
+    if os.environ.get("MEMS_DIGEST"):
+        return None
     if payload.get("hook_event_name") != "PreToolUse":
         return None
-
     mode = _mode()
-    if mode == "off":
+    if mode == "off" or repo_scope is None:
         return None
 
     tool_name = payload.get("tool_name") or ""
@@ -280,23 +266,33 @@ def evaluate(payload: dict) -> dict | None:
     if classify_tool(tool_name, tool_input) != "FS":
         return None
 
+    targets = repo_scope.target_paths(tool_name, tool_input, payload.get("cwd") or "")
+    wing = repo_scope.first_wing(targets)
+    if not wing:
+        return None
+
     transcript = derive_transcript_path(payload)
     if transcript is None:
         return None
-
     try:
-        lines = read_transcript_tail(transcript, _tail_bytes())
+        lines = read_transcript_tail(
+            transcript, _positive_int_env("MEMPALACE_FS_GATE_TAIL_BYTES", DEFAULT_TAIL_BYTES)
+        )
     except OSError:
         return None
 
-    # +1 for the call currently being gated, which is not in the transcript yet.
-    run = uncovered_run_length(lines) + 1
-    threshold = _threshold()
+    edited: set[str] = set()
+    run = uncovered_run_length(lines, edited)
+    if _read_path(tool_name, tool_input) in edited:
+        return None
+    run += 1
+    threshold = _positive_int_env("MEMPALACE_FS_GATE_THRESHOLD", DEFAULT_THRESHOLD)
     if run < threshold or run % threshold != 0:
         return None
+    if is_held_out(payload.get("session_id")):
+        return None
 
-    reminder = build_reminder(run, guess_wing(payload.get("cwd")))
-
+    reminder = build_reminder(run, wing)
     if mode == "block":
         return {
             "hookSpecificOutput": {
@@ -305,10 +301,6 @@ def evaluate(payload: dict) -> dict | None:
                 "permissionDecisionReason": reminder,
             }
         }
-    # `additionalContext` is non-blocking: the model sees the reminder, the tool
-    # call still runs. Deliberately the only key emitted — `systemMessage` is not
-    # in the current hook reference, and an unrecognized key risks the whole
-    # payload being discarded, which would silently disable the gate.
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -324,17 +316,13 @@ def main() -> int:
     try:
         payload = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        # Never block on a parse failure — mirrors pretooluse_agent_orientation.py.
         return 0
     if not isinstance(payload, dict):
         return 0
-
     try:
         decision = evaluate(payload)
     except Exception:
-        # Fail open on any unexpected error. A broken gate must not stop work.
         return 0
-
     if decision is not None:
         print(json.dumps(decision))
     return 0
