@@ -94,12 +94,10 @@ def cmd_add(args: argparse.Namespace) -> int:
         if existing and Path(existing).resolve() == path:
             print(f"{args.name} already registered at {path}")
             return 0
-        # Otherwise overwrite — name collision implies an explicit re-point.
         print(f"warning: overwriting existing entry for {args.name} (was {existing})")
 
     repos[args.name] = {
         "path": str(path),
-        "wing": args.name,
         "default_hall": "general",
     }
     save_repos_json(config_dir, repos)

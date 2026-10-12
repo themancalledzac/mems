@@ -1,4 +1,4 @@
-"""Multi-repo git-diff sync orchestrator."""
+"""Multi-repo sync: list each wing's files, prune the rest, index what is kept."""
 
 import json
 import os
@@ -14,10 +14,9 @@ from mempalace.miner import (
     SKIP_FILENAMES,
     GitignoreMatcher,
     process_file,
-    scan_project,
     should_skip_dir,
 )
-from mempalace.palace import get_collection
+from mempalace.palace import get_closets_collection, get_collection
 
 GIT_TIMEOUT_S = 30
 PRUNE_BATCH = 1000
@@ -257,43 +256,41 @@ class SyncLedger:
 
 
 def get_head_sha(repo_path: str) -> str | None:
-    """Get HEAD commit SHA for a repo. Returns None if repo is invalid."""
-    result = subprocess.run(
-        ["git", "-C", repo_path, "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-    )
+    """HEAD commit SHA for a repo, or None when git fails or there are no commits."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_path, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_S,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     if result.returncode != 0:
         return None
     return result.stdout.strip()
 
 
-def get_changed_files(repo_path: str, since_sha: str) -> dict:
-    """Get files changed since a commit SHA. Returns {added, modified, deleted} lists."""
-    result = subprocess.run(
-        ["git", "-C", repo_path, "diff", "--name-status", since_sha, "HEAD"],
-        capture_output=True,
-        text=True,
-    )
-    changes = {"added": [], "modified": [], "deleted": []}
-    for line in result.stdout.strip().split("\n"):
-        if not line.strip():
-            continue
-        parts = line.split("\t", 1)
-        if len(parts) < 2:
-            continue
-        status, filepath = parts[0], parts[1]
-        if status.startswith("A"):
-            changes["added"].append(filepath)
-        elif status.startswith("M"):
-            changes["modified"].append(filepath)
-        elif status.startswith("D"):
-            changes["deleted"].append(filepath)
-    return changes
+def worktree_is_clean(repo_path: str) -> bool:
+    """True when `git status --porcelain` reports no modified or untracked files."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_path, "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_S,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and not result.stdout.strip()
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class SyncEngine:
-    """Orchestrates multi-repo sync using mempalace mining."""
+    """Syncs the repos in repos.json into the palace. The repos.json key is the wing name."""
 
     def __init__(self, config_path: str, data_path: str):
         self.config_path = Path(config_path)
@@ -304,132 +301,115 @@ class SyncEngine:
             self.repos: dict = json.load(f)
 
         with open(self.config_path / "mempalace.yaml") as f:
-            self.taxonomy: dict = yaml.safe_load(f)
+            self.taxonomy: dict = yaml.safe_load(f) or {}
 
-    def full_sync(self, wing_name: str | None = None):
-        """Run full mine on all repos (or a specific wing).
+    def full_sync(self, wing_name: str | None = None, allow_large_prune: bool = False) -> list[str]:
+        """Reconcile every wing (or one) with its repo and return the wing names processed.
 
-        Uses scan_project + process_file instead of mine() because repos
-        are mounted read-only and mine() expects a mempalace.yaml in each repo.
+        Indexes committed and untracked-but-not-ignored files as they are on disk, and
+        prunes drawers for files the repo no longer has. A wing whose repo cannot be
+        listed is marked as an error and left untouched.
         """
-        targets = {wing_name: self.repos[wing_name]} if wing_name else self.repos
+        return self._run(self._targets(wing_name), allow_large_prune)
 
-        for name, repo_config in targets.items():
-            repo_path = repo_config["path"]
-            try:
-                files = scan_project(repo_path)
-                collection = get_collection(str(self.data_path))
-                wing_def = self.taxonomy.get("wings", {}).get(name, {})
-                wing_rooms = _flatten_rooms(wing_def)
+    def incremental_sync(
+        self, wing_name: str | None = None, allow_large_prune: bool = False
+    ) -> list[str]:
+        """Like `full_sync`, but skips wings with nothing new and returns only the wings run.
 
-                for filepath in files:
-                    process_file(
-                        filepath=Path(filepath),
-                        project_path=Path(repo_path),
-                        collection=collection,
-                        wing=name,
-                        rooms=wing_rooms,
-                        agent="memory-sync",
-                        dry_run=False,
-                    )
-
-                head_sha = get_head_sha(repo_path)
-                self.ledger.update(
-                    name,
-                    {
-                        "repo_path": repo_path,
-                        "last_commit_sha": head_sha,
-                        "last_sync_ts": datetime.now(timezone.utc).isoformat(),
-                        "files_indexed": len(files),
-                        "status": "synced",
-                    },
-                )
-            except Exception as e:
-                self.ledger.mark_error(name, repo_path, str(e))
-
-        self._post_ingest_prune()
-        self.ledger.save()
-
-    def incremental_sync(self, wing_name: str | None = None):
-        """Sync only files changed since last sync."""
-        targets = {wing_name: self.repos[wing_name]} if wing_name else self.repos
-
-        for name, repo_config in targets.items():
-            entry = self.ledger.get(name)
-            if not entry or entry.get("status") == "error" or not entry.get("last_commit_sha"):
-                self.full_sync(wing_name=name)
-                continue
-
-            repo_path = repo_config["path"]
-            try:
-                head_sha = get_head_sha(repo_path)
-                if head_sha == entry["last_commit_sha"]:
-                    continue
-
-                changes = get_changed_files(repo_path, entry["last_commit_sha"])
-                collection = get_collection(str(self.data_path))
-                wing_def = self.taxonomy.get("wings", {}).get(name, {})
-                wing_rooms = _flatten_rooms(wing_def)
-
-                for filepath in changes["deleted"]:
-                    full_path = str(Path(repo_path) / filepath)
-                    self._delete_drawers_for_file(collection, full_path)
-
-                for filepath in changes["added"] + changes["modified"]:
-                    full_path = Path(repo_path) / filepath
-                    if full_path.exists():
-                        process_file(
-                            filepath=full_path,
-                            project_path=Path(repo_path),
-                            collection=collection,
-                            wing=name,
-                            rooms=wing_rooms,
-                            agent="memory-sync",
-                            dry_run=False,
-                        )
-
-                prev_count = entry.get("files_indexed", 0)
-                self.ledger.update(
-                    name,
-                    {
-                        "repo_path": repo_path,
-                        "last_commit_sha": head_sha,
-                        "last_sync_ts": datetime.now(timezone.utc).isoformat(),
-                        "files_indexed": prev_count
-                        + len(changes["added"])
-                        - len(changes["deleted"]),
-                        "status": "synced",
-                    },
-                )
-            except Exception as e:
-                self.ledger.mark_error(name, repo_path, str(e))
-
-        self._post_ingest_prune()
-        self.ledger.save()
-
-    def _post_ingest_prune(self) -> None:
-        """Prune drawers whose source files were gitignored/deleted/moved.
-
-        Upstream cmd_sync handles this — runs against the same palace_path the
-        wrapper just wrote to (MEMPALACE_PALACE_PATH already set via _bind_palace).
-        Non-fatal: ingest already succeeded. Log + continue on failure.
+        A wing is skipped only when HEAD matches the ledger, its last prune was `ok`, and
+        `git status --porcelain` is empty. Unchanged files are cheap: `process_file` skips
+        them by mtime.
         """
-        try:
-            subprocess.run(
-                ["mempalace", "sync", "--apply"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-            print(f"warning: post-ingest mempalace sync skipped: {exc}", flush=True)
+        targets = {
+            name: cfg
+            for name, cfg in self._targets(wing_name).items()
+            if not self._is_current(name, cfg)
+        }
+        return self._run(targets, allow_large_prune)
 
-    def _delete_drawers_for_file(self, collection, source_file: str):
-        """Remove all drawers originating from a deleted file."""
+    def _targets(self, wing_name: str | None) -> dict:
+        return {wing_name: self.repos[wing_name]} if wing_name else dict(self.repos)
+
+    def _is_current(self, name: str, repo_config: dict) -> bool:
+        entry = self.ledger.get(name)
+        if not entry or entry.get("status") != "synced":
+            return False
+        if (entry.get("prune") or {}).get("status") != "ok":
+            return False
+        repo_path = repo_config["path"]
+        head = get_head_sha(repo_path)
+        return (
+            head is not None
+            and head == entry.get("last_commit_sha")
+            and worktree_is_clean(repo_path)
+        )
+
+    def _run(self, targets: dict, allow_large_prune: bool) -> list[str]:
+        if not targets:
+            return []
         try:
-            results = collection.get(where={"source_file": source_file})
-            if results and results.get("ids"):
-                collection.delete(ids=results["ids"])
+            collection = get_collection(str(self.data_path))
+        except Exception as exc:
+            for name, repo_config in targets.items():
+                self.ledger.mark_error(name, repo_config["path"], f"palace unavailable: {exc}")
+            self.ledger.save()
+            return list(targets)
+        try:
+            closets = get_closets_collection(str(self.data_path), create=False)
         except Exception:
-            pass
+            closets = None
+
+        for name, repo_config in targets.items():
+            self._sync_one(name, repo_config, collection, allow_large_prune, closets=closets)
+        self.ledger.save()
+        return list(targets)
+
+    def _sync_one(
+        self, name: str, repo_config: dict, collection, allow_large_prune: bool, *, closets=None
+    ) -> dict:
+        """List the wing's files, prune drawers for the rest, index the kept files.
+
+        Returns the new ledger entry. Any failure marks only this wing as an error.
+        """
+        repo_path = repo_config["path"]
+        try:
+            keep = list_indexable_files(repo_path, self.taxonomy.get("sync") or {})
+            prune = prune_wing(
+                collection,
+                name,
+                repo_path,
+                {str(p) for p in keep},
+                allow_large=allow_large_prune,
+                closets=closets,
+            )
+            rooms = _flatten_rooms(self.taxonomy.get("wings", {}).get(name, {}) or {})
+            indexed = skipped = 0
+            for filepath in keep:
+                drawers, _room, _skip = process_file(
+                    filepath=filepath,
+                    project_path=Path(repo_path),
+                    collection=collection,
+                    wing=name,
+                    rooms=rooms,
+                    agent="memory-sync",
+                    dry_run=False,
+                )
+                if drawers:
+                    indexed += 1
+                else:
+                    skipped += 1
+            entry = {
+                "repo_path": repo_path,
+                "last_commit_sha": get_head_sha(repo_path),
+                "last_sync_ts": _now(),
+                "files_indexed": len(keep),
+                "status": "synced",
+                "prune": {**prune, "ts": _now()},
+                "last_run": {"indexed": indexed, "skipped": skipped, "removed": prune["removed"]},
+            }
+            self.ledger.update(name, entry)
+            return entry
+        except Exception as exc:
+            self.ledger.mark_error(name, repo_path, str(exc))
+            return self.ledger.get(name)

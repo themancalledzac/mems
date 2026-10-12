@@ -11,8 +11,8 @@ class TestHandleSync:
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         with (
-            patch("src.sync_engine.scan_project", return_value=[]),
-            patch("src.sync_engine.process_file"),
+            patch("src.sync_engine.list_indexable_files", return_value=[]),
+            patch("src.sync_engine.process_file", return_value=(1, "general", None)),
         ):
             result = handle_sync(
                 config_path=str(tmp_config),
@@ -27,8 +27,8 @@ class TestHandleSync:
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         with (
-            patch("src.sync_engine.scan_project", return_value=[]),
-            patch("src.sync_engine.process_file"),
+            patch("src.sync_engine.list_indexable_files", return_value=[]),
+            patch("src.sync_engine.process_file", return_value=(1, "general", None)),
         ):
             result = handle_sync(
                 config_path=str(tmp_config),
@@ -60,8 +60,8 @@ class TestHandleSyncStatus:
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         with (
-            patch("src.sync_engine.scan_project", return_value=[]),
-            patch("src.sync_engine.process_file"),
+            patch("src.sync_engine.list_indexable_files", return_value=[]),
+            patch("src.sync_engine.process_file", return_value=(1, "general", None)),
         ):
             handle_sync(
                 config_path=str(tmp_config),

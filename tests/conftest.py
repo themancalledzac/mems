@@ -25,20 +25,15 @@ def tmp_config(tmp_path):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
 
-    repos = {
-        "test-wing": {
-            "path": str(tmp_path / "repos" / "test-repo"),
-            "wing": "test-wing",
-        }
-    }
+    repos = {"test-wing": {"path": str(tmp_path / "repos" / "test-repo")}}
     (config_dir / "repos.json").write_text(json.dumps(repos, indent=2))
 
     taxonomy = {
         "wings": {
             "test-wing": {
-                "rooms": {
+                "halls": {
                     "general": {
-                        "patterns": ["*"],
+                        "rooms": [{"name": "general", "keywords": ["hello"]}],
                     }
                 }
             }

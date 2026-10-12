@@ -254,12 +254,12 @@ bash scripts/backfill_claude_sessions.sh
 
 ## Configuration
 
-- **`~/.config/mems/repos.json`** — wing name → repo path:
+- **`~/.config/mems/repos.json`** — wing name → repo path. The key is the
+  wing name; there is no separate `wing` field.
   ```json
   {
     "my-project": {
       "path": "/Users/you/Code/my-project",
-      "wing": "my-project",
       "default_hall": "general"
     }
   }

@@ -121,9 +121,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     doctor_p.set_defaults(func=cmd_doctor)
 
 
-# --- helpers ------------------------------------------------------------------
-
-
 def _call(tool: str, args: dict | None = None):
     try:
         with PalaceClient() as client:
@@ -132,9 +129,6 @@ def _call(tool: str, args: dict | None = None):
         print(f"server error: {exc}", file=sys.stderr)
         return None, EXIT_SERVER_ERROR
     return extract_tool_result(result), EXIT_OK
-
-
-# --- handlers -----------------------------------------------------------------
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -227,10 +221,6 @@ def cmd_export(args: argparse.Namespace) -> int:
     if code != EXIT_OK:
         return code
 
-    # Server wrote the bundle to its own exports/ dir. If the user passed
-    # --output, copy it over. This requires the server-side path to be
-    # readable from the client — in container setups it might not be, so
-    # we surface the server path either way.
     server_path = (data or {}).get("path")
     print_json(data)
 
@@ -251,9 +241,6 @@ def cmd_export(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
     return EXIT_OK
-
-
-# --- upstream-CLI shell-outs --------------------------------------------------
 
 
 def cmd_make(args: argparse.Namespace) -> int:
@@ -281,7 +268,6 @@ def cmd_restore(args: argparse.Namespace) -> int:
         print_json(result)
         return EXIT_OK if (result or {}).get("ok", True) else EXIT_SERVER_ERROR
 
-    # `--palace` is a global flag on the mempalace CLI, before the subcommand.
     cmd = ["mempalace", "--palace", args.palace_path, "repair", "--mode", "from-sqlite"]
     if getattr(args, "source", None):
         cmd.extend(["--source", args.source])
@@ -318,7 +304,6 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "(run: bash scripts/install_claude_code.sh)"
         )
 
-    # `--palace` is a global flag on the mempalace CLI, before the subcommand.
     status = subprocess.run(
         ["mempalace", "--palace", args.palace_path, "status"],
         capture_output=True,

@@ -11,7 +11,7 @@ from src.sync_engine import (
     SyncEngine,
     SyncLedger,
     SyncSourceError,
-    get_changed_files,
+    _flatten_rooms,
     get_head_sha,
     list_indexable_files,
     prune_wing,
@@ -80,35 +80,6 @@ class TestGitOps:
         sha = get_head_sha("/nonexistent/repo")
         assert sha is None
 
-    def test_get_changed_files(self, mock_repo):
-        (mock_repo / "new_file.py").write_text("x = 1\n")
-        (mock_repo / "hello.py").write_text("print('updated')\n")
-        subprocess.run(["git", "add", "."], cwd=mock_repo, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-m", "second"],
-            cwd=mock_repo,
-            capture_output=True,
-        )
-
-        result = subprocess.run(
-            ["git", "log", "--reverse", "--format=%H"],
-            cwd=mock_repo,
-            capture_output=True,
-            text=True,
-        )
-        first_sha = result.stdout.strip().split("\n")[0]
-
-        changes = get_changed_files(str(mock_repo), first_sha)
-        assert "new_file.py" in changes["added"]
-        assert "hello.py" in changes["modified"]
-
-    def test_get_changed_files_no_changes(self, mock_repo):
-        sha = get_head_sha(str(mock_repo))
-        changes = get_changed_files(str(mock_repo), sha)
-        assert changes["added"] == []
-        assert changes["modified"] == []
-        assert changes["deleted"] == []
-
 
 class TestSyncEngine:
     def test_init_loads_config(self, tmp_config, tmp_palace):
@@ -117,6 +88,9 @@ class TestSyncEngine:
             data_path=str(tmp_palace),
         )
         assert "test-wing" in engine.repos
+        assert _flatten_rooms(engine.taxonomy["wings"]["test-wing"]) == [
+            {"name": "general", "keywords": ["hello"]}
+        ]
 
     def test_full_sync_indexes_repo(self, tmp_config, tmp_palace, mock_repo):
         repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
@@ -129,9 +103,11 @@ class TestSyncEngine:
 
         with (
             patch(
-                "src.sync_engine.scan_project", return_value=[mock_repo / "hello.py"]
+                "src.sync_engine.list_indexable_files", return_value=[mock_repo / "hello.py"]
             ) as mock_scan,
-            patch("src.sync_engine.process_file") as mock_process,
+            patch(
+                "src.sync_engine.process_file", return_value=(1, "general", None)
+            ) as mock_process,
         ):
             engine.full_sync()
 
@@ -151,7 +127,9 @@ class TestSyncEngine:
             data_path=str(tmp_palace),
         )
 
-        with patch("src.sync_engine.scan_project", side_effect=Exception("repo not found")):
+        with patch(
+            "src.sync_engine.list_indexable_files", side_effect=SyncSourceError("repo not found")
+        ):
             engine.full_sync()
 
         entry = engine.ledger.get("bad-wing")
@@ -176,6 +154,7 @@ class TestSyncEngine:
                 "last_sync_ts": "2026-04-15T10:00:00Z",
                 "files_indexed": 1,
                 "status": "synced",
+                "prune": {"status": "ok"},
             },
         )
 
@@ -213,7 +192,9 @@ class TestSyncEngine:
             capture_output=True,
         )
 
-        with patch("src.sync_engine.process_file") as mock_process:
+        with patch(
+            "src.sync_engine.process_file", return_value=(1, "general", None)
+        ) as mock_process:
             engine.incremental_sync()
 
         assert mock_process.call_count >= 1
@@ -235,55 +216,15 @@ class TestSyncEngine:
 
         with (
             patch(
-                "src.sync_engine.scan_project", return_value=[mock_repo / "hello.py"]
+                "src.sync_engine.list_indexable_files", return_value=[mock_repo / "hello.py"]
             ) as mock_scan,
-            patch("src.sync_engine.process_file"),
+            patch("src.sync_engine.process_file", return_value=(1, "general", None)),
         ):
             engine.full_sync(wing_name="test-wing")
 
         mock_scan.assert_called_once()
         assert engine.ledger.get("test-wing") is not None
         assert engine.ledger.get("other-wing") is None
-
-
-def test_full_sync_calls_mempalace_sync_after_ingest(
-    monkeypatch, tmp_config, tmp_palace, mock_repo
-):
-    """full_sync should invoke `mempalace sync` after ingest to prune stale drawers."""
-    calls = []
-    real_run = subprocess.run
-
-    class R:
-        returncode = 0
-        stdout = ""
-        stderr = ""
-
-    def fake_subprocess_run(cmd, *args, **kwargs):
-        calls.append(cmd)
-        if cmd and isinstance(cmd, list) and cmd[0] == "git":
-            return real_run(cmd, *args, **kwargs)
-        return R()
-
-    monkeypatch.setattr("src.sync_engine.subprocess.run", fake_subprocess_run)
-    monkeypatch.setattr("src.sync_engine.scan_project", lambda *a, **k: [])
-    monkeypatch.setattr("src.sync_engine.process_file", lambda *a, **k: None)
-
-    repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
-    (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
-
-    engine = SyncEngine(
-        config_path=str(tmp_config),
-        data_path=str(tmp_palace),
-    )
-
-    engine.full_sync()
-
-    sync_calls = [
-        c
-        for c in calls
-        if isinstance(c, list) and len(c) >= 2 and c[0] == "mempalace" and "sync" in c
-    ]
-    assert sync_calls, f"expected `mempalace sync` post-ingest call; got {calls}"
 
 
 def _git(repo, *args):
@@ -694,3 +635,227 @@ class TestPruneWing:
         assert report["removed"] == 0
         assert report["scanned"] == 2
         assert _ids(col) == ["a", "b"]
+
+
+def _fake_process_file(filepath, project_path, collection, wing, **kwargs):
+    """Stand-in for upstream process_file that files one drawer per file with fixed embeddings."""
+    source = str(filepath)
+    if collection.get(where={"source_file": source}, include=[])["ids"]:
+        return 0, "general", None
+    collection.add(
+        ids=[f"{wing}:{source}"],
+        documents=[Path(filepath).read_text()],
+        metadatas=[{"wing": wing, "room": "general", "source_file": source}],
+        embeddings=[[0.1, 0.2, 0.3]],
+    )
+    return 1, "general", None
+
+
+def _sources(tmp_palace, wing="w"):
+    metas = get_collection(str(tmp_palace)).get(where={"wing": wing}, include=["metadatas"])
+    return sorted(Path(m["source_file"]).name for m in metas["metadatas"])
+
+
+@pytest.fixture
+def reconcile_env(tmp_path, tmp_palace, monkeypatch):
+    """A git repo registered as wing `w`, with process_file replaced by a fast fake."""
+    repo = _init_repo(tmp_path / "repo")
+    config = tmp_path / "cfg"
+    config.mkdir()
+    (config / "repos.json").write_text(json.dumps({"w": {"path": str(repo)}}))
+    (config / "mempalace.yaml").write_text("wings: {}\n")
+    monkeypatch.setattr("src.sync_engine.process_file", _fake_process_file)
+
+    def engine():
+        return SyncEngine(config_path=str(config), data_path=str(tmp_palace))
+
+    return repo, config, engine
+
+
+class TestReconcile:
+    def test_full_sync_records_prune_in_ledger(self, reconcile_env, tmp_palace):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        _commit_all(repo)
+        _drawers(get_collection(str(tmp_palace)), [("old", _meta("w", repo / "gone.md"))])
+
+        eng = engine()
+        assert eng.full_sync() == ["w"]
+
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["status"] == "synced"
+        assert entry["prune"]["status"] == "ok"
+        assert entry["prune"]["removed"] == 1
+        assert entry["prune"]["ts"]
+        assert entry["last_run"] == {"indexed": 1, "skipped": 0, "removed": 1}
+        assert _sources(tmp_palace) == ["a.md"]
+
+    def test_sync_never_invokes_mempalace_cli(self, reconcile_env, monkeypatch):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        _commit_all(repo)
+        calls = []
+        real_run = subprocess.run
+
+        def recording_run(cmd, *args, **kwargs):
+            calls.append(cmd)
+            return real_run(cmd, *args, **kwargs)
+
+        monkeypatch.setattr("src.sync_engine.subprocess.run", recording_run)
+        eng = engine()
+        eng.full_sync()
+        (repo / "b.md").write_text("beta")
+        eng.incremental_sync()
+
+        assert calls
+        assert all(c[0] == "git" for c in calls)
+
+    def test_reconcile_rename_purges_old_and_indexes_new(self, reconcile_env, tmp_palace):
+        repo, _, engine = reconcile_env
+        (repo / "old.md").write_text("same content " * 20)
+        _commit_all(repo)
+        engine().full_sync()
+        _git(repo, "mv", "old.md", "new.md")
+        _git(repo, "commit", "-qm", "rename")
+
+        assert engine().incremental_sync() == ["w"]
+        assert _sources(tmp_palace) == ["new.md"]
+
+    def test_reconcile_unrelated_delete_and_add(self, reconcile_env, tmp_palace):
+        repo, _, engine = reconcile_env
+        body = "describe('utils', () => {\n" + "  it('works', () => expect(1).toBe(1));\n" * 20
+        (repo / "manageUtils.test.ts").write_text(body + "});\n")
+        _commit_all(repo)
+        engine().full_sync()
+        (repo / "manageUtils.test.ts").unlink()
+        (repo / "collectionEditUtils.test.ts").write_text(body + "  it('edits');\n});\n")
+        _commit_all(repo)
+
+        engine().incremental_sync()
+        assert _sources(tmp_palace) == ["collectionEditUtils.test.ts"]
+
+    def test_reconcile_skips_non_indexable(self, reconcile_env, tmp_palace, monkeypatch):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        (repo / "package-lock.json").write_text("{}")
+        _commit_all(repo)
+        _drawers(
+            get_collection(str(tmp_palace)), [("lock", _meta("w", repo / "package-lock.json"))]
+        )
+        seen = []
+
+        def spy(filepath, **kwargs):
+            seen.append(Path(filepath).name)
+            return _fake_process_file(filepath, **kwargs)
+
+        monkeypatch.setattr("src.sync_engine.process_file", spy)
+        engine().full_sync()
+
+        assert seen == ["a.md"]
+        assert _sources(tmp_palace) == ["a.md"]
+
+    def test_reconcile_modified_to_symlink_purges_drawers(self, reconcile_env, tmp_palace):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        (repo / "b.md").write_text("beta")
+        _commit_all(repo)
+        engine().full_sync()
+        (repo / "a.md").unlink()
+        (repo / "a.md").symlink_to("b.md")
+        _commit_all(repo)
+
+        engine().incremental_sync()
+        assert _sources(tmp_palace) == ["b.md"]
+
+    def test_incremental_skips_wing_when_clean_and_unchanged(
+        self, reconcile_env, tmp_palace, monkeypatch
+    ):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        _commit_all(repo)
+        engine().full_sync()
+        before = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        monkeypatch.setattr(
+            "src.sync_engine.list_indexable_files",
+            lambda *a, **k: pytest.fail("clean wing should be skipped"),
+        )
+
+        assert engine().incremental_sync() == []
+        assert SyncLedger(tmp_palace / "sync_ledger.json").get("w") == before
+
+    def test_incremental_runs_when_untracked_file_added(self, reconcile_env, tmp_palace):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        _commit_all(repo)
+        engine().full_sync()
+        (repo / "notes.md").write_text("untracked notes")
+
+        assert engine().incremental_sync() == ["w"]
+        assert _sources(tmp_palace) == ["a.md", "notes.md"]
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["last_run"] == {"indexed": 1, "skipped": 1, "removed": 0}
+
+    def test_incremental_runs_when_last_prune_not_ok(self, reconcile_env, tmp_palace):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        _commit_all(repo)
+        eng = engine()
+        eng.full_sync()
+        eng.ledger.entries["w"]["prune"]["status"] = "blocked"
+        eng.ledger.save()
+
+        assert engine().incremental_sync() == ["w"]
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["prune"]["status"] == "ok"
+
+    def test_files_indexed_counts_kept_files(self, reconcile_env, tmp_palace):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        (repo / "b.py").write_text("x = 1")
+        (repo / "package-lock.json").write_text("{}")
+        (repo / "image.png").write_bytes(b"\x89PNG")
+        _commit_all(repo)
+
+        engine().full_sync()
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["files_indexed"] == 2
+
+    def test_sync_source_error_marks_only_that_wing(self, reconcile_env, tmp_path, tmp_palace):
+        repo, config, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        _commit_all(repo)
+        not_git = tmp_path / "plain"
+        not_git.mkdir()
+        (not_git / "c.md").write_text("gamma")
+        _drawers(get_collection(str(tmp_palace)), [("c", _meta("bad", not_git / "c.md"))])
+        (config / "repos.json").write_text(
+            json.dumps({"bad": {"path": str(not_git)}, "w": {"path": str(repo)}})
+        )
+
+        assert sorted(engine().full_sync()) == ["bad", "w"]
+        ledger = SyncLedger(tmp_palace / "sync_ledger.json")
+        assert ledger.get("bad")["status"] == "error"
+        assert ledger.get("w")["status"] == "synced"
+        assert _sources(tmp_palace, "bad") == ["c.md"]
+        assert _sources(tmp_palace) == ["a.md"]
+
+    def test_collection_opened_once_per_run(self, reconcile_env, tmp_path, monkeypatch):
+        repo, config, engine = reconcile_env
+        other = _init_repo(tmp_path / "other")
+        (other / "o.md").write_text("other")
+        (repo / "a.md").write_text("alpha")
+        _commit_all(repo)
+        _commit_all(other)
+        (config / "repos.json").write_text(
+            json.dumps({"w": {"path": str(repo)}, "x": {"path": str(other)}})
+        )
+        opened = []
+        real_get_collection = get_collection
+
+        def counting(*args, **kwargs):
+            opened.append(args)
+            return real_get_collection(*args, **kwargs)
+
+        monkeypatch.setattr("src.sync_engine.get_collection", counting)
+        engine().full_sync()
+        assert len(opened) == 1
