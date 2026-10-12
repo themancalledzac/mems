@@ -55,7 +55,7 @@ def _rows():
         ),
         (
             "user-cheat",
-            "Rewrite the Integrate interview cheat sheet",
+            "Rewrite the Acme interview cheat sheet",
             _user(topic="interview-prep"),
         ),
         ("user-plain", "Prefer small commits", _user(topic="git")),
@@ -84,7 +84,7 @@ def test_keywords_match_case_insensitively_in_topic(tagger):
 
 
 def test_keywords_match_inside_hyphenated_topic(tagger):
-    rows = [("user-y", "Questions for Andrew", _user(topic="interview-prep-accuracy"))]
+    rows = [("user-y", "Questions for the hiring manager", _user(topic="interview-prep-accuracy"))]
     plan = tagger.plan_tags(FakeCollection(rows), set())
     assert [e["id"] for e in plan["by_keyword"]] == ["user-y"]
 
@@ -105,7 +105,7 @@ def test_dry_run_writes_nothing(tagger, capsys):
     assert result["applied"] == 0
     out = capsys.readouterr().out
     assert "dry run" in out
-    assert "user-cheat interview-prep Rewrite the Integrate" in out
+    assert "user-cheat interview-prep Rewrite the Acme" in out
 
 
 def test_apply_tags_wing_entries_only(tagger):

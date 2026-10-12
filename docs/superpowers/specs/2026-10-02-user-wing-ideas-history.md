@@ -61,7 +61,7 @@ A1 was not sized before it started.
 
 - Rule 1 of `tag_personal.py` tags by `source_wing` in `job-search` or `running`. Rule 2 matches unscoped entries by keyword. Together they tagged 13 entries. Snapshot: `wing_user_pretag_20261002.json`.
 - A later audit tagged 5 more by id with `--ids`. Snapshot: `wing_user_preaudit_20261002.json`. The total is 18.
-- All 18 are Integrate job-search or interview prep. Each was read before tagging.
+- All 18 are job-search or interview prep. Each was read before tagging.
 - Trap: the keyword list first hit "resume" (as in resuming a session) and "savings" (cost savings). Both were removed. Matching is whole-word, and hyphens count as word breaks.
 - Trap: 4 of the 5 audited entries had a code repo's `source_wing`. Filtering by repo alone would have let them through to orch.
 

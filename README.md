@@ -153,6 +153,7 @@ else is required on the host except Docker and Python for the CLI.
 - `mempalace-data:/data` — named volume holding `palace/`, `exports/`,
   `sync_ledger.json`, and `exports/wing_user_backups/`.
 - `./config:/config:ro` — your taxonomy + `repos.json` (read-only inside).
+  `repos.json` is gitignored; copy `config/repos.example.json` to start one.
 - `~/Code/<repo>:/repos/<repo>:ro` — one bind-mount per wing you want
   indexed. Put these in a user-local `docker-compose.override.yml`
   (gitignored); `docker-compose.yml` has examples commented in.
