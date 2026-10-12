@@ -59,7 +59,6 @@ def _install_fake_palace(monkeypatch, return_value=None):
 def test_repo_add_and_list_roundtrip(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MEMORY_CONFIG_DIR", str(tmp_path / "cfg"))
 
-    # A git repo-ish path (just the .git marker is enough for the validator).
     repo = tmp_path / "myrepo"
     (repo / ".git").mkdir(parents=True)
 
@@ -67,14 +66,12 @@ def test_repo_add_and_list_roundtrip(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "added my-wing" in captured.out
 
-    # Verify the repos.json on disk matches the expected shape.
     repos = json.loads((tmp_path / "cfg" / "repos.json").read_text())
     assert "my-wing" in repos
     assert repos["my-wing"]["path"] == str(repo.resolve())
     assert repos["my-wing"]["wing"] == "my-wing"
 
-    # List should include the wing we just added.
-    capsys.readouterr()  # drain
+    capsys.readouterr()
     assert main(["repo", "list"]) == 0
     out = capsys.readouterr().out
     assert "my-wing" in out
@@ -94,14 +91,12 @@ def test_repo_add_rejects_non_git_path(tmp_path, monkeypatch, capsys):
 def test_publish_dry_run_invokes_publish_to_repo(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MEMORY_CONFIG_DIR", str(tmp_path / "cfg"))
 
-    # Seed repos.json with a wing.
     cfg = tmp_path / "cfg"
     cfg.mkdir()
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
     (cfg / "repos.json").write_text(json.dumps({"my-wing": {"path": str(repo), "wing": "my-wing"}}))
 
-    # Fake bundle file the fake palace "wrote".
     bundle = tmp_path / "my-wing.wingpack"
     bundle.write_bytes(b"fake-zip")
 
@@ -199,7 +194,6 @@ def test_hybrid_joins_jira_and_palace(monkeypatch, capsys):
     monkeypatch.setenv("JIRA_EMAIL", "me@example.com")
     monkeypatch.setenv("JIRA_API_TOKEN", "token")
 
-    # Mock the Jira client's issue() method.
     fake_issue = {
         "key": "FOO-123",
         "fields": {
