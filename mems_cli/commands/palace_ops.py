@@ -30,11 +30,22 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     sync_p = subparsers.add_parser("sync", help="Sync repos into the palace.")
     sync_p.add_argument("--wing", default=None, help="Only sync this wing.")
     sync_p.add_argument("--full", action="store_true", help="Force full sync.")
+    sync_p.add_argument(
+        "--allow-large-prune",
+        dest="allow_large_prune",
+        action="store_true",
+        help="Apply prunes that would remove most of a wing's drawers.",
+    )
     sync_p.set_defaults(func=cmd_sync)
 
     resync_p = subparsers.add_parser("resync", help="Resync (default: full_refresh=False).")
-    resync_p.add_argument("--wing", default=None)
     resync_p.add_argument("--full", action="store_true", help="Full refresh.")
+    resync_p.add_argument(
+        "--allow-large-prune",
+        dest="allow_large_prune",
+        action="store_true",
+        help="Apply prunes that would remove most of a wing's drawers.",
+    )
     resync_p.set_defaults(func=cmd_resync)
 
     wings_p = subparsers.add_parser("wings", help="List every wing in the palace.")
@@ -121,9 +132,6 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     doctor_p.set_defaults(func=cmd_doctor)
 
 
-# --- helpers ------------------------------------------------------------------
-
-
 def _call(tool: str, args: dict | None = None):
     try:
         with PalaceClient() as client:
@@ -134,7 +142,23 @@ def _call(tool: str, args: dict | None = None):
     return extract_tool_result(result), EXIT_OK
 
 
-# --- handlers -----------------------------------------------------------------
+def _prune_cell(prune: dict | None) -> str:
+    """One status cell for a wing's last prune: `ok -N`, `blocked N`, `error`, `skipped` or `-`."""
+    if not prune:
+        return "-"
+    status = prune.get("status", "-")
+    if status == "ok":
+        return f"ok -{prune.get('removed', 0)}"
+    if status == "blocked":
+        return f"blocked {prune.get('would_remove', 0)}"
+    return status
+
+
+def _status_cell(entry: dict) -> str:
+    """The wing's status, with `, failed N` added when files failed to index last run."""
+    status = entry.get("status", "-")
+    failed = (entry.get("last_run") or {}).get("failed") or 0
+    return f"{status}, failed {failed}" if failed else status
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -157,31 +181,57 @@ def cmd_status(args: argparse.Namespace) -> int:
                 name,
                 entry.get("last_sync_ts", "-"),
                 entry.get("files_indexed", "-"),
-                entry.get("status", "-"),
+                _status_cell(entry),
+                _prune_cell(entry.get("prune")),
             )
         )
-    print_table(rows, headers=("wing", "last_sync", "files_indexed", "status"))
+    print_table(rows, headers=("wing", "last_sync", "files_indexed", "status", "prune"))
     return EXIT_OK
 
 
+def _report_sync(data) -> int:
+    """Print a sync result and its problems (errors, failed files, bad prunes) on stderr."""
+    print_json(data)
+    data = data if isinstance(data, dict) else {}
+    for err in data.get("errors") or []:
+        print(f"error: {err.get('wing')}: {err.get('error')}", file=sys.stderr)
+    if data.get("message"):
+        print(f"error: {data['message']}", file=sys.stderr)
+    for wing, failure in (data.get("failed") or {}).items():
+        print(f"failed: {wing}: {failure.get('count', 0)} files", file=sys.stderr)
+        for item in failure.get("files") or []:
+            print(f"  {wing}: {item.get('file')}: {item.get('error')}", file=sys.stderr)
+    for wing, prune in (data.get("prune") or {}).items():
+        if prune.get("status") in ("blocked", "error"):
+            print(
+                f"prune {prune['status']}: {wing}: {prune.get('reason', '')}",
+                file=sys.stderr,
+            )
+    return EXIT_OK if data.get("status") == "ok" else EXIT_USER_ERROR
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
-    payload = {"full": bool(args.full)}
+    payload = {
+        "full": bool(args.full),
+        "allow_large_prune": bool(getattr(args, "allow_large_prune", False)),
+    }
     if args.wing:
         payload["wing"] = args.wing
     data, code = _call("memory_sync", payload)
     if code != EXIT_OK:
         return code
-    print_json(data)
-    return EXIT_OK
+    return _report_sync(data)
 
 
 def cmd_resync(args: argparse.Namespace) -> int:
-    payload = {"full_refresh": bool(args.full)}
+    payload = {
+        "full_refresh": bool(args.full),
+        "allow_large_prune": bool(getattr(args, "allow_large_prune", False)),
+    }
     data, code = _call("mempalace_resync", payload)
     if code != EXIT_OK:
         return code
-    print_json(data)
-    return EXIT_OK
+    return _report_sync(data)
 
 
 def cmd_wings(args: argparse.Namespace) -> int:
@@ -227,10 +277,6 @@ def cmd_export(args: argparse.Namespace) -> int:
     if code != EXIT_OK:
         return code
 
-    # Server wrote the bundle to its own exports/ dir. If the user passed
-    # --output, copy it over. This requires the server-side path to be
-    # readable from the client — in container setups it might not be, so
-    # we surface the server path either way.
     server_path = (data or {}).get("path")
     print_json(data)
 
@@ -251,9 +297,6 @@ def cmd_export(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
     return EXIT_OK
-
-
-# --- upstream-CLI shell-outs --------------------------------------------------
 
 
 def cmd_make(args: argparse.Namespace) -> int:
@@ -281,7 +324,6 @@ def cmd_restore(args: argparse.Namespace) -> int:
         print_json(result)
         return EXIT_OK if (result or {}).get("ok", True) else EXIT_SERVER_ERROR
 
-    # `--palace` is a global flag on the mempalace CLI, before the subcommand.
     cmd = ["mempalace", "--palace", args.palace_path, "repair", "--mode", "from-sqlite"]
     if getattr(args, "source", None):
         cmd.extend(["--source", args.source])
@@ -318,7 +360,6 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "(run: bash scripts/install_claude_code.sh)"
         )
 
-    # `--palace` is a global flag on the mempalace CLI, before the subcommand.
     status = subprocess.run(
         ["mempalace", "--palace", args.palace_path, "status"],
         capture_output=True,

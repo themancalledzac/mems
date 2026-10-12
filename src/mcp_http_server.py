@@ -1,8 +1,10 @@
 """StreamableHTTP MCP server composing mempalace + custom tools."""
 
 import os
+from functools import partial
 from pathlib import Path
 
+import anyio
 from mcp.server.fastmcp import FastMCP
 
 from src.tools import (
@@ -190,16 +192,24 @@ def create_server(
         )
 
     @mcp.tool()
-    def memory_sync(
+    async def memory_sync(
         wing: str | None = None,
         full: bool = False,
+        allow_large_prune: bool = False,
     ) -> dict:
-        """Sync repos into the palace. Incremental by default, full if requested."""
-        return handle_sync(
-            config_path=config_path,
-            data_path=palace_path,
-            wing=wing,
-            full=full,
+        """Sync repos into the palace. Incremental by default, full if requested.
+
+        A prune that would remove most of a wing is blocked unless allow_large_prune is set.
+        """
+        return await anyio.to_thread.run_sync(
+            partial(
+                handle_sync,
+                config_path=config_path,
+                data_path=palace_path,
+                wing=wing,
+                full=full,
+                allow_large_prune=allow_large_prune,
+            )
         )
 
     @mcp.tool()
@@ -259,16 +269,19 @@ def create_server(
         return handle_search_all(palace_path, query=query, n=n)
 
     @mcp.tool()
-    def mempalace_resync(
+    async def mempalace_resync(
         full_refresh: bool = False,
-        output_dir: str | None = None,
+        allow_large_prune: bool = False,
     ) -> dict:
         """Resync all registered wings. Pass full_refresh=True to ignore the ledger."""
-        return handle_resync(
-            config_path=config_path,
-            data_path=palace_path,
-            full_refresh=full_refresh,
-            output_dir=output_dir,
+        return await anyio.to_thread.run_sync(
+            partial(
+                handle_resync,
+                config_path=config_path,
+                data_path=palace_path,
+                full_refresh=full_refresh,
+                allow_large_prune=allow_large_prune,
+            )
         )
 
     @mcp.tool()
@@ -448,8 +461,6 @@ def _attach_health_route(server: FastMCP, palace_path: str | None = None) -> Non
 
     @server.custom_route("/health/deep", methods=["GET"])
     async def health_deep(_request):
-        import anyio
-
         try:
             wings = await anyio.to_thread.run_sync(handle_list_wings, resolved)
             return JSONResponse(

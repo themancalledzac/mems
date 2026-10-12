@@ -1,38 +1,29 @@
 {
   "edens-zac": {
-    "path": "/repos/edens.zac",
-    "wing": "edens-zac"
+    "path": "/repos/edens.zac"
   },
   "edens-zac-backend": {
-    "path": "/repos/edens.zac.backend",
-    "wing": "edens-zac-backend"
+    "path": "/repos/edens.zac.backend"
   },
   "edens-zac-backend-go": {
-    "path": "/repos/edens.zac.backend.go",
-    "wing": "edens-zac-backend-go"
+    "path": "/repos/edens.zac.backend.go"
   },
   "edens-zac-ml": {
-    "path": "/repos/edens.zac.ml",
-    "wing": "edens-zac-ml"
+    "path": "/repos/edens.zac.ml"
   },
   "lightroom-export": {
-    "path": "/repos/lightroom-portfolio-export",
-    "wing": "lightroom-export"
+    "path": "/repos/lightroom-portfolio-export"
   },
   "job-search": {
-    "path": "/repos/job-search",
-    "wing": "job-search"
+    "path": "/repos/job-search"
   },
   "running": {
-    "path": "/repos/running",
-    "wing": "running"
+    "path": "/repos/running"
   },
   "memory": {
-    "path": "/repos/Memory",
-    "wing": "memory"
+    "path": "/repos/Memory"
   },
   "agent-orchestrator": {
-    "path": "/repos/agent-orchestrator",
-    "wing": "agent-orchestrator"
+    "path": "/repos/agent-orchestrator"
   }
 }

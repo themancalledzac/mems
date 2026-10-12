@@ -3,7 +3,7 @@
 # mempalace public API map (verified 2026-04-17 against installed mempalace):
 # - mempalace.palace.get_collection(palace_path, collection_name="mempalace_drawers",
 #       create=True) -> chroma Collection
-# - mempalace.palace.get_closets_collection(palace_path, create=False) -> Collection
+# - mempalace.palace.get_closets_collection(palace_path, create=True) -> Collection
 # - mempalace.searcher.search_memories(query, palace_path, wing=None, room=None,
 #       n_results=5, max_distance=0.0) -> dict    (hybrid drawers+closets search)
 # - mempalace.searcher.build_where_filter(wing=None, room=None) -> dict
@@ -58,6 +58,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -68,17 +69,11 @@ from mempalace.searcher import search_memories
 from src.sync_engine import SyncEngine, SyncLedger
 from src.wing_pack import write_wingpack
 
-# Default embedding model/dim for wingpack export — matches mempalace defaults.
-# Flagged in the Phase 4A report: introspecting model/dim from a live chroma
-# Collection is not reliable across versions, so we hardcode these.
 DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 DEFAULT_EMBEDDING_DIM = 384
 
-# Keep metadata fetches paged; chroma silently truncates large .get() calls.
 _FETCH_PAGE = 1000
-
-
-# --- existing sync handlers --------------------------------------------------
+_SYNC_LOCK = threading.Lock()
 
 
 def handle_sync(
@@ -86,36 +81,62 @@ def handle_sync(
     data_path: str,
     wing: str | None = None,
     full: bool = False,
+    allow_large_prune: bool = False,
 ) -> dict:
-    """Handle memory_sync tool call."""
+    """Sync repos into the palace and report only the wings this run touched.
+
+    Status is `partial` when a wing errored, a file failed to index (listed per wing under
+    `failed`), or a prune was `error` or `blocked`.
+    Runs one at a time per process, since each run rewrites the ledger and the collection.
+    """
+    with _SYNC_LOCK:
+        return _sync_locked(config_path, data_path, wing, full, allow_large_prune)
+
+
+def _sync_locked(
+    config_path: str, data_path: str, wing: str | None, full: bool, allow_large_prune: bool
+) -> dict:
     engine = SyncEngine(config_path=config_path, data_path=data_path)
 
     if wing and wing not in engine.repos:
         return {"status": "error", "message": f"Unknown wing: {wing}"}
 
-    if full or not SyncLedger(f"{data_path}/sync_ledger.json").entries:
-        engine.full_sync(wing_name=wing)
+    if full or not engine.ledger.entries:
+        touched = engine.full_sync(wing_name=wing, allow_large_prune=allow_large_prune)
     else:
-        engine.incremental_sync(wing_name=wing)
+        touched = engine.incremental_sync(wing_name=wing, allow_large_prune=allow_large_prune)
 
-    synced = []
-    errors = []
-    for name, entry in engine.ledger.entries.items():
-        if entry["status"] == "synced":
+    synced: list[str] = []
+    errors: list[dict] = []
+    prune: dict[str, dict] = {}
+    failed: dict[str, dict] = {}
+    for name in touched:
+        entry = engine.ledger.get(name) or {}
+        if entry.get("status") == "synced":
             synced.append(name)
-        elif entry["status"] == "error":
+        else:
             errors.append({"wing": name, "error": entry.get("error", "unknown")})
+        if entry.get("prune"):
+            prune[name] = entry["prune"]
+        run = entry.get("last_run") or {}
+        if run.get("failed"):
+            failed[name] = {"count": run["failed"], "files": run.get("failed_files") or []}
 
-    return {"status": "ok", "synced": synced, "errors": errors}
+    bad_prune = any(r.get("status") in ("error", "blocked") for r in prune.values())
+    status = "partial" if errors or bad_prune or failed else "ok"
+    return {
+        "status": status,
+        "synced": synced,
+        "errors": errors,
+        "prune": prune,
+        "failed": failed,
+    }
 
 
 def handle_sync_status(config_path: str, data_path: str) -> dict:
     """Handle memory_sync_status tool call."""
     ledger = SyncLedger(f"{data_path}/sync_ledger.json")
     return {"wings": ledger.entries}
-
-
-# --- internal helpers --------------------------------------------------------
 
 
 def _drawers_collection(palace_path: str):
@@ -158,9 +179,6 @@ def _fetch_all_metadata(col, where: dict | None = None) -> list[dict]:
 def _ts_of(meta: dict) -> str:
     """Pick the best timestamp-ish field we have. Empty string if absent."""
     return meta.get("timestamp") or meta.get("created_at") or meta.get("ts") or ""
-
-
-# --- navigation handlers -----------------------------------------------------
 
 
 def handle_status(palace_path: str) -> dict:
@@ -252,7 +270,6 @@ def handle_get_logs_recent(palace_path: str, n: int = 10) -> list[dict]:
     if total == 0:
         return []
 
-    # Fetch everything paged — chroma can't sort server-side on metadata.
     entries: list[dict] = []
     offset = 0
     while offset < total:
@@ -289,9 +306,6 @@ def handle_get_logs_recent(palace_path: str, n: int = 10) -> list[dict]:
     return out
 
 
-# --- search handlers ---------------------------------------------------------
-
-
 def handle_search(
     palace_path: str,
     query: str,
@@ -320,14 +334,11 @@ def handle_search_all(palace_path: str, query: str, n: int = 10) -> dict:
     return search_memories(query, palace_path=palace_path, n_results=n)
 
 
-# --- ops ---------------------------------------------------------------------
-
-
 def handle_resync(
     config_path: str,
     data_path: str,
     full_refresh: bool = False,
-    output_dir: str | None = None,  # noqa: ARG001 — accepted for API symmetry
+    allow_large_prune: bool = False,
 ) -> dict:
     """Ops-level resync. Delegates to handle_sync with full=full_refresh."""
     result = handle_sync(
@@ -335,12 +346,10 @@ def handle_resync(
         data_path=data_path,
         wing=None,
         full=full_refresh,
+        allow_large_prune=allow_large_prune,
     )
     result["full_refresh"] = full_refresh
     return result
-
-
-# --- wing sharing ------------------------------------------------------------
 
 
 def handle_export_wing(
@@ -393,9 +402,6 @@ def handle_export_wing(
     }
 
 
-# --- Phase 4B: upstream-wrapped handlers -------------------------------------
-
-
 def _bind_palace(palace_path: str) -> None:
     """Set MEMPALACE_PALACE_PATH so subsequent mempalace tool calls hit the right palace.
 
@@ -404,9 +410,6 @@ def _bind_palace(palace_path: str) -> None:
     multi-tenant hosts that rotate palaces between tool invocations.
     """
     os.environ["MEMPALACE_PALACE_PATH"] = palace_path
-
-
-# --- KG -----------------------------------------------------------------------
 
 
 def handle_kg_query(
@@ -463,9 +466,6 @@ def handle_kg_stats(palace_path: str) -> dict:
     return tool_kg_stats()
 
 
-# --- Graph traversal ---------------------------------------------------------
-
-
 def handle_traverse(palace_path: str, start_room: str, max_hops: int = 2) -> dict:
     """Walk the palace graph from a starting room."""
     from mempalace.mcp_server import tool_traverse_graph
@@ -484,9 +484,6 @@ def handle_find_tunnels(
 
     _bind_palace(palace_path)
     return tool_find_tunnels(wing_a=wing_a, wing_b=wing_b)
-
-
-# --- Drawer ops --------------------------------------------------------------
 
 
 def handle_list_drawers(
@@ -523,9 +520,6 @@ def handle_delete_drawer(palace_path: str, drawer_id: str) -> dict:
 
     _bind_palace(palace_path)
     return tool_delete_drawer(drawer_id=drawer_id)
-
-
-# --- Tunnels -----------------------------------------------------------------
 
 
 def handle_create_tunnel(
@@ -579,9 +573,6 @@ def handle_tunnel_read(palace_path: str, wing: str, room: str) -> dict:
 
     _bind_palace(palace_path)
     return tool_follow_tunnels(wing=wing, room=room)
-
-
-# --- Diary -------------------------------------------------------------------
 
 
 def handle_diary_write(

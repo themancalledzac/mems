@@ -1,21 +1,24 @@
 """`mems repo ...` — manage the local repos.json registry.
 
-Operates entirely on local config. No MCP calls.
+Edits only local config. `mems repo list` asks the server for each wing's last sync.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from mems_cli.common import (
+    extract_tool_result,
     get_config_dir,
     load_repos_json,
     print_json,
     print_table,
     save_repos_json,
 )
+from mems_cli.palace_client import PalaceClient, PalaceClientError
+
+LEDGER_TIMEOUT_S = 5.0
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -47,21 +50,21 @@ def _no_action(args: argparse.Namespace) -> int:
     return 1
 
 
-def _load_ledger(config_dir: Path) -> dict:
-    """Load sync_ledger.json if present (for last_sync column)."""
-    path = config_dir / "sync_ledger.json"
-    if not path.exists():
-        return {}
+def _load_ledger() -> dict:
+    """Per-wing sync ledger from the server's `memory_sync_status`, or {} when unreachable."""
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        with PalaceClient(timeout=LEDGER_TIMEOUT_S) as client:
+            data = extract_tool_result(client.call("memory_sync_status", {}))
+    except PalaceClientError:
         return {}
+    wings = data.get("wings") if isinstance(data, dict) else None
+    return wings if isinstance(wings, dict) else {}
 
 
 def cmd_list(args: argparse.Namespace) -> int:
     config_dir = get_config_dir()
     repos = load_repos_json(config_dir)
-    ledger = _load_ledger(config_dir)
+    ledger = _load_ledger()
 
     if not repos:
         print("no repos registered. Try: mems repo add <name> <path>")
@@ -94,12 +97,10 @@ def cmd_add(args: argparse.Namespace) -> int:
         if existing and Path(existing).resolve() == path:
             print(f"{args.name} already registered at {path}")
             return 0
-        # Otherwise overwrite — name collision implies an explicit re-point.
         print(f"warning: overwriting existing entry for {args.name} (was {existing})")
 
     repos[args.name] = {
         "path": str(path),
-        "wing": args.name,
         "default_hall": "general",
     }
     save_repos_json(config_dir, repos)

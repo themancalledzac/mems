@@ -23,6 +23,23 @@
 #   4. Fallback — 'general' room (auto-created per wing)
 #
 # Room names must be unique within a wing.
+#
+# sync: controls which repo files each wing indexes. The base list is
+#   `git ls-files --cached --others --exclude-standard`, filtered by upstream's
+#   extension, filename, skip-dir and size rules.
+#   - exclude: gitignore-style patterns dropped on top of that list.
+#   - max_data_file_bytes: size cap for data_extensions files. null = no cap.
+#   - data_extensions: suffixes the cap applies to.
+#   - extra_extensions: suffixes to index that upstream does not read.
+#   - extra_filenames: exact file names to index, for files with no suffix
+#     upstream reads.
+
+sync:
+  exclude: ["**/.claude/settings.local.json", "**/.claude/.cc-writes/**"]
+  max_data_file_bytes: null
+  data_extensions: [.json, .jsonl, .csv]
+  extra_extensions: [.tf]
+  extra_filenames: [Dockerfile, pom.xml]
 
 wings:
   # --------------------------------------------------------------------------

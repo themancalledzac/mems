@@ -27,8 +27,8 @@ services:
       # The sync engine reads config/repos.json to discover wings; each wing's
       # path must be mounted into the container at the same logical location.
       # Example (uncomment + edit for your layout):
-      #   - ~/Code/edens-zac:/repos/edens-zac:ro
-      #   - ~/Code/edens-zac-backend:/repos/edens-zac-backend:ro
+      #   - ~/Code/edens.zac:/repos/edens.zac:ro
+      #   - ~/Code/edens.zac.backend:/repos/edens.zac.backend:ro
       #   - ~/Code/Memory:/repos/Memory:ro
 
 volumes:

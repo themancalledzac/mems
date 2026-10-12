@@ -64,7 +64,7 @@ All `mems` subcommands hit the MCP server at `MEMORY_SERVER_URL`
 
 | Command | Purpose |
 |---------|---------|
-| `mems repo list` | Show registered repos with last-sync timestamp. |
+| `mems repo list` | Show registered repos. The last-sync column comes from the server and shows `-` when it is down. |
 | `mems repo add <name> <path>` | Register a local git repo as a wing. |
 | `mems repo remove <name>` | Unregister a wing (does not delete palace data). |
 | `mems repo show <name>` | Dump the JSON entry for one wing. |
@@ -73,13 +73,21 @@ All `mems` subcommands hit the MCP server at `MEMORY_SERVER_URL`
 
 | Command | Purpose |
 |---------|---------|
-| `mems status` | Sync ledger digest (per-wing last sync, file count, status). |
-| `mems sync [--wing W] [--full]` | Run `memory_sync` — incremental by default. |
-| `mems resync [--wing W] [--full]` | Call `mempalace_resync` directly. |
+| `mems status` | Sync ledger digest: per-wing last sync, file count, status, and last prune (`ok -N`, `blocked N`, `error`, `skipped`). |
+| `mems sync [--wing W] [--full] [--allow-large-prune]` | Run `memory_sync`, incremental by default. Exits 1 when any wing errored or a prune was blocked or failed. |
+| `mems resync [--full] [--allow-large-prune]` | Call `mempalace_resync` for every wing. Same exit code as `mems sync`. |
 | `mems wings` | List every wing with drawer counts. |
 | `mems rooms <wing>` | List rooms inside a wing. |
 | `mems logs [--limit N] [--wing W]` | Recent drawer log entries. |
 | `mems export <wing> [--output PATH]` | Export a wing as a `.wingpack` bundle. |
+
+To check or clean drawers for files a repo no longer has, run
+`python -m src.sync_engine prune [--wing W] [--apply] [--force]` in the container. It reads
+`PALACE_PATH` and `CONFIG_PATH` like the server. It is a dry run by default and prints one
+JSON line per wing with `would_remove` and `top_sources`. `--apply` deletes, and `--force`
+allows a prune that would remove most of a wing. It only touches wings in `repos.json`.
+Before `--apply`, run `docker compose stop`, then
+`docker compose run --rm --no-deps mempalace python -m src.sync_engine prune --apply`.
 
 ### Search & user context
 
@@ -263,12 +271,12 @@ bash scripts/backfill_claude_sessions.sh
 
 ## Configuration
 
-- **`~/.config/mems/repos.json`** — wing name → repo path:
+- **`~/.config/mems/repos.json`** — wing name → repo path. The key is the
+  wing name; there is no separate `wing` field.
   ```json
   {
     "my-project": {
       "path": "/Users/you/Code/my-project",
-      "wing": "my-project",
       "default_hall": "general"
     }
   }

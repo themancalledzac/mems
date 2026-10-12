@@ -37,7 +37,7 @@ def _install_fake_palace(monkeypatch, return_value=None):
     """Patch PalaceClient in every module that imports it."""
     from mems_cli import main as main_module
     from mems_cli.commands import hybrid as hybrid_module
-    from mems_cli.commands import palace_ops, publishing, search
+    from mems_cli.commands import palace_ops, publishing, repo_registry, search
 
     if return_value is not None:
         _FakePalaceClient.return_value_override = return_value
@@ -53,11 +53,13 @@ def _install_fake_palace(monkeypatch, return_value=None):
     monkeypatch.setattr(search, "PalaceClient", _Factory)
     monkeypatch.setattr(publishing, "PalaceClient", _Factory)
     monkeypatch.setattr(hybrid_module, "PalaceClient", _Factory)
+    monkeypatch.setattr(repo_registry, "PalaceClient", _Factory)
     return _Factory
 
 
 def test_repo_add_and_list_roundtrip(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MEMORY_CONFIG_DIR", str(tmp_path / "cfg"))
+    _install_fake_palace(monkeypatch)
 
     repo = tmp_path / "myrepo"
     (repo / ".git").mkdir(parents=True)
@@ -69,13 +71,49 @@ def test_repo_add_and_list_roundtrip(tmp_path, monkeypatch, capsys):
     repos = json.loads((tmp_path / "cfg" / "repos.json").read_text())
     assert "my-wing" in repos
     assert repos["my-wing"]["path"] == str(repo.resolve())
-    assert repos["my-wing"]["wing"] == "my-wing"
+    assert "wing" not in repos["my-wing"]
 
     capsys.readouterr()
     assert main(["repo", "list"]) == 0
     out = capsys.readouterr().out
     assert "my-wing" in out
     assert str(repo.resolve()) in out
+
+
+def test_repo_list_shows_last_sync(tmp_path, monkeypatch, capsys):
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    monkeypatch.setenv("MEMORY_CONFIG_DIR", str(cfg))
+    (cfg / "repos.json").write_text(
+        json.dumps({"wing-a": {"path": "/r/a"}, "wing-b": {"path": "/r/b"}})
+    )
+    status = {"wings": {"wing-a": {"last_sync_ts": "2026-10-12T08:00:00Z", "status": "synced"}}}
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": status})
+
+    assert main(["repo", "list"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert any("wing-a" in line and "2026-10-12T08:00:00Z" in line for line in lines)
+    assert any("wing-b" in line and line.rstrip().endswith("-") for line in lines)
+    assert _FakePalaceClient.last_instance.calls[0][0] == "memory_sync_status"
+
+
+def test_repo_list_works_when_server_is_down(tmp_path, monkeypatch, capsys):
+    from mems_cli.commands import repo_registry
+    from mems_cli.palace_client import PalaceClientError
+
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    monkeypatch.setenv("MEMORY_CONFIG_DIR", str(cfg))
+    (cfg / "repos.json").write_text(json.dumps({"wing-a": {"path": "/r/a"}}))
+
+    class _Down(_FakePalaceClient):
+        def call(self, name, arguments=None):
+            raise PalaceClientError("connection refused")
+
+    monkeypatch.setattr(repo_registry, "PalaceClient", _Down)
+
+    assert main(["repo", "list"]) == 0
+    assert "wing-a" in capsys.readouterr().out
 
 
 def test_repo_add_rejects_non_git_path(tmp_path, monkeypatch, capsys):
@@ -95,7 +133,7 @@ def test_publish_dry_run_invokes_publish_to_repo(tmp_path, monkeypatch, capsys):
     cfg.mkdir()
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    (cfg / "repos.json").write_text(json.dumps({"my-wing": {"path": str(repo), "wing": "my-wing"}}))
+    (cfg / "repos.json").write_text(json.dumps({"my-wing": {"path": str(repo)}}))
 
     bundle = tmp_path / "my-wing.wingpack"
     bundle.write_bytes(b"fake-zip")
@@ -139,6 +177,93 @@ def test_status_calls_memory_sync_status(monkeypatch, capsys):
     assert _FakePalaceClient.last_instance is not None
     calls = _FakePalaceClient.last_instance.calls
     assert calls[0][0] == "memory_sync_status"
+
+
+def test_status_shows_prune_column(monkeypatch, capsys):
+    wings = {
+        "a-ok": {"status": "synced", "prune": {"status": "ok", "removed": 3}},
+        "b-blocked": {"status": "synced", "prune": {"status": "blocked", "would_remove": 250}},
+        "c-error": {"status": "synced", "prune": {"status": "error", "removed": 0}},
+        "d-skipped": {"status": "synced", "prune": {"status": "skipped"}},
+        "e-none": {"status": "error"},
+    }
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"wings": wings}})
+
+    assert main(["status"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert "prune" in lines[0]
+
+    def row(name):
+        return next(line for line in lines if line.startswith(name))
+
+    assert "ok -3" in row("a-ok")
+    assert "blocked 250" in row("b-blocked")
+    assert "error" in row("c-error").split("synced", 1)[1]
+    assert "skipped" in row("d-skipped")
+    assert row("e-none").split()[-1] == "-"
+
+
+def test_sync_exits_nonzero_on_partial(monkeypatch, capsys):
+    result = {
+        "status": "partial",
+        "synced": ["a"],
+        "errors": [{"wing": "b", "error": "git ls-files failed"}],
+        "prune": {"a": {"status": "blocked", "would_remove": 300, "reason": "too large"}},
+    }
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": result})
+
+    assert main(["sync", "--allow-large-prune"]) == 1
+    err = capsys.readouterr().err
+    assert "git ls-files failed" in err
+    assert "blocked" in err
+    assert "too large" in err
+    name, args = _FakePalaceClient.last_instance.calls[0]
+    assert name == "memory_sync"
+    assert args["allow_large_prune"] is True
+
+
+def test_sync_prints_failed_files(monkeypatch, capsys):
+    result = {
+        "status": "partial",
+        "synced": ["a"],
+        "errors": [],
+        "prune": {"a": {"status": "ok"}},
+        "failed": {
+            "a": {"count": 2, "files": [{"file": "Dockerfile", "error": "ValueError: bad"}]}
+        },
+    }
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": result})
+
+    assert main(["sync"]) == 1
+    err = capsys.readouterr().err
+    assert "failed: a: 2 files" in err
+    assert "a: Dockerfile: ValueError: bad" in err
+
+
+def test_status_shows_failed_count(monkeypatch, capsys):
+    wings = {
+        "a-bad": {"status": "synced", "last_run": {"failed": 3}},
+        "b-good": {"status": "synced", "last_run": {"failed": 0}},
+    }
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"wings": wings}})
+
+    assert main(["status"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+
+    def row(name):
+        return next(line for line in lines if line.startswith(name))
+
+    assert "synced, failed 3" in row("a-bad")
+    assert "failed" not in row("b-good")
+
+
+def test_sync_exits_zero_when_ok(monkeypatch, capsys):
+    result = {"status": "ok", "synced": ["a"], "errors": [], "prune": {"a": {"status": "ok"}}}
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": result})
+
+    assert main(["sync"]) == 0
+    assert capsys.readouterr().err == ""
+    assert _FakePalaceClient.last_instance.calls[0][1]["allow_large_prune"] is False
 
 
 def test_search_wing_calls_mempalace_search(monkeypatch):
