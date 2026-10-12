@@ -7,7 +7,7 @@ from src.tools import handle_sync, handle_sync_status
 
 class TestHandleSync:
     def test_sync_all(self, tmp_config, tmp_palace, mock_repo):
-        repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
+        repos = {"test-wing": {"path": str(mock_repo)}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         with (
@@ -23,7 +23,7 @@ class TestHandleSync:
         assert "test-wing" in result["synced"]
 
     def test_sync_specific_wing(self, tmp_config, tmp_palace, mock_repo):
-        repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
+        repos = {"test-wing": {"path": str(mock_repo)}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         with (
@@ -56,7 +56,7 @@ class TestHandleSyncStatus:
         assert result["wings"] == {}
 
     def test_status_after_sync(self, tmp_config, tmp_palace, mock_repo):
-        repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
+        repos = {"test-wing": {"path": str(mock_repo)}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         with (

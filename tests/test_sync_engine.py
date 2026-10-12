@@ -93,7 +93,7 @@ class TestSyncEngine:
         ]
 
     def test_full_sync_indexes_repo(self, tmp_config, tmp_palace, mock_repo):
-        repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
+        repos = {"test-wing": {"path": str(mock_repo)}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         engine = SyncEngine(
@@ -119,7 +119,7 @@ class TestSyncEngine:
         assert entry["last_commit_sha"] is not None
 
     def test_full_sync_handles_bad_repo(self, tmp_config, tmp_palace):
-        repos = {"bad-wing": {"path": "/nonexistent/repo", "wing": "bad-wing"}}
+        repos = {"bad-wing": {"path": "/nonexistent/repo"}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         engine = SyncEngine(
@@ -137,7 +137,7 @@ class TestSyncEngine:
         assert "repo not found" in entry["error"]
 
     def test_incremental_sync_no_changes(self, tmp_config, tmp_palace, mock_repo):
-        repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
+        repos = {"test-wing": {"path": str(mock_repo)}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         engine = SyncEngine(
@@ -164,7 +164,7 @@ class TestSyncEngine:
         mock_process.assert_not_called()
 
     def test_incremental_sync_with_changes(self, tmp_config, tmp_palace, mock_repo):
-        repos = {"test-wing": {"path": str(mock_repo), "wing": "test-wing"}}
+        repos = {"test-wing": {"path": str(mock_repo)}}
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
         engine = SyncEngine(
@@ -204,8 +204,8 @@ class TestSyncEngine:
 
     def test_full_sync_specific_wing(self, tmp_config, tmp_palace, mock_repo):
         repos = {
-            "test-wing": {"path": str(mock_repo), "wing": "test-wing"},
-            "other-wing": {"path": "/other/repo", "wing": "other-wing"},
+            "test-wing": {"path": str(mock_repo)},
+            "other-wing": {"path": "/other/repo"},
         }
         (Path(tmp_config) / "repos.json").write_text(json.dumps(repos))
 
@@ -859,3 +859,39 @@ class TestReconcile:
         monkeypatch.setattr("src.sync_engine.get_collection", counting)
         engine().full_sync()
         assert len(opened) == 1
+
+    def test_ledger_records_head_read_before_listing(self, reconcile_env, tmp_palace, monkeypatch):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        _commit_all(repo)
+        before = get_head_sha(str(repo))
+        real_list = list_indexable_files
+
+        def list_then_commit(repo_path, sync_cfg):
+            files = real_list(repo_path, sync_cfg)
+            (repo / "late.md").write_text("late")
+            _commit_all(repo)
+            return files
+
+        monkeypatch.setattr("src.sync_engine.list_indexable_files", list_then_commit)
+        engine().full_sync()
+
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["last_commit_sha"] == before
+        assert get_head_sha(str(repo)) != before
+
+    def test_sync_passes_closets_to_process_file(self, reconcile_env, monkeypatch):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        _commit_all(repo)
+        seen = []
+
+        def spy(filepath, **kwargs):
+            seen.append(kwargs.get("closets_col"))
+            return _fake_process_file(filepath, **kwargs)
+
+        monkeypatch.setattr("src.sync_engine.process_file", spy)
+        engine().full_sync()
+
+        assert len(seen) == 1
+        assert seen[0] is not None

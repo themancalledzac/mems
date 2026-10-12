@@ -356,7 +356,7 @@ class SyncEngine:
             self.ledger.save()
             return list(targets)
         try:
-            closets = get_closets_collection(str(self.data_path), create=False)
+            closets = get_closets_collection(str(self.data_path))
         except Exception:
             closets = None
 
@@ -374,6 +374,7 @@ class SyncEngine:
         """
         repo_path = repo_config["path"]
         try:
+            head = get_head_sha(repo_path)
             keep = list_indexable_files(repo_path, self.taxonomy.get("sync") or {})
             prune = prune_wing(
                 collection,
@@ -394,6 +395,7 @@ class SyncEngine:
                     rooms=rooms,
                     agent="memory-sync",
                     dry_run=False,
+                    closets_col=closets,
                 )
                 if drawers:
                     indexed += 1
@@ -401,7 +403,7 @@ class SyncEngine:
                     skipped += 1
             entry = {
                 "repo_path": repo_path,
-                "last_commit_sha": get_head_sha(repo_path),
+                "last_commit_sha": head,
                 "last_sync_ts": _now(),
                 "files_indexed": len(keep),
                 "status": "synced",

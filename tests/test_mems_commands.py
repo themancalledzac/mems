@@ -95,7 +95,7 @@ def test_publish_dry_run_invokes_publish_to_repo(tmp_path, monkeypatch, capsys):
     cfg.mkdir()
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    (cfg / "repos.json").write_text(json.dumps({"my-wing": {"path": str(repo), "wing": "my-wing"}}))
+    (cfg / "repos.json").write_text(json.dumps({"my-wing": {"path": str(repo)}}))
 
     bundle = tmp_path / "my-wing.wingpack"
     bundle.write_bytes(b"fake-zip")
