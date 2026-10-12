@@ -26,10 +26,21 @@ LARGE_PRUNE_FRACTION = 0.5
 LARGE_PRUNE_MIN = 200
 LARGE_PRUNE_OVERRIDE = "mems sync --allow-large-prune"
 CLI_PRUNE_OVERRIDE = "python -m src.sync_engine prune --apply --force"
+SYSTEMIC_FAILURE_RUN = 25
+MAX_FAILED_FILES = 20
+MAX_ERROR_CHARS = 200
 
 
 class SyncSourceError(Exception):
     """A wing's repo could not be listed, so nothing should be pruned from it."""
+
+
+class SystemicSyncError(Exception):
+    """Every one of the first files tried failed, so the palace itself is likely broken."""
+
+
+def _error_text(exc: Exception) -> str:
+    return f"{type(exc).__name__}: {exc}"[:MAX_ERROR_CHARS]
 
 
 def _flatten_rooms(wing_def: dict) -> list:
@@ -321,9 +332,9 @@ class SyncEngine:
     ) -> list[str]:
         """Like `full_sync`, but skips wings with nothing new and returns only the wings run.
 
-        A wing is skipped only when HEAD matches the ledger, its last prune was `ok`, and
-        `git status --porcelain` is empty. Unchanged files are cheap: `process_file` skips
-        them by mtime.
+        A wing is skipped only when HEAD matches the ledger, its last run had an `ok` prune
+        and no failed files, and `git status --porcelain` is empty. Unchanged files are
+        cheap: `process_file` skips them by mtime.
         """
         targets = {
             name: cfg
@@ -340,6 +351,8 @@ class SyncEngine:
         if not entry or entry.get("status") != "synced":
             return False
         if (entry.get("prune") or {}).get("status") != "ok":
+            return False
+        if (entry.get("last_run") or {}).get("failed"):
             return False
         repo_path = repo_config["path"]
         head = get_head_sha(repo_path)
@@ -374,7 +387,9 @@ class SyncEngine:
     ) -> dict:
         """List the wing's files, prune drawers for the rest, index the kept files.
 
-        Returns the new ledger entry. Any failure marks only this wing as an error.
+        Returns the new ledger entry. A file that fails to index is recorded in `last_run`
+        and skipped. Only a listing failure, or a run where the first files all fail, marks
+        the wing as an error.
         """
         repo_path = repo_config["path"]
         try:
@@ -389,8 +404,31 @@ class SyncEngine:
                 closets=closets,
             )
             rooms = _flatten_rooms(self.taxonomy.get("wings", {}).get(name, {}) or {})
-            indexed = skipped = 0
-            for filepath in keep:
+            run = self._index_files(name, repo_path, keep, collection, rooms, closets)
+            entry = {
+                "repo_path": repo_path,
+                "last_commit_sha": head,
+                "last_sync_ts": _now(),
+                "files_indexed": len(keep),
+                "status": "synced",
+                "prune": {**prune, "ts": _now()},
+                "last_run": {**run, "removed": prune["removed"]},
+            }
+            self.ledger.update(name, entry)
+            return entry
+        except Exception as exc:
+            self.ledger.mark_error(name, repo_path, str(exc))
+            return self.ledger.get(name)
+
+    def _index_files(self, name, repo_path, keep, collection, rooms, closets) -> dict:
+        """Run `process_file` on each kept file and count indexed, skipped and failed files.
+
+        Raises SystemicSyncError when the first SYSTEMIC_FAILURE_RUN files all fail.
+        """
+        indexed = skipped = failed = 0
+        failed_files: list[dict] = []
+        for filepath in keep:
+            try:
                 drawers, _room, _skip = process_file(
                     filepath=filepath,
                     project_path=Path(repo_path),
@@ -401,24 +439,30 @@ class SyncEngine:
                     dry_run=False,
                     closets_col=closets,
                 )
-                if drawers:
-                    indexed += 1
-                else:
-                    skipped += 1
-            entry = {
-                "repo_path": repo_path,
-                "last_commit_sha": head,
-                "last_sync_ts": _now(),
-                "files_indexed": len(keep),
-                "status": "synced",
-                "prune": {**prune, "ts": _now()},
-                "last_run": {"indexed": indexed, "skipped": skipped, "removed": prune["removed"]},
-            }
-            self.ledger.update(name, entry)
-            return entry
-        except Exception as exc:
-            self.ledger.mark_error(name, repo_path, str(exc))
-            return self.ledger.get(name)
+            except Exception as exc:
+                failed += 1
+                if len(failed_files) < MAX_FAILED_FILES:
+                    failed_files.append(
+                        {
+                            "file": os.path.relpath(filepath, repo_path),
+                            "error": _error_text(exc),
+                        }
+                    )
+                if failed == SYSTEMIC_FAILURE_RUN and not indexed and not skipped:
+                    raise SystemicSyncError(
+                        f"first {failed} files failed to index: {failed_files[0]['error']}"
+                    ) from exc
+                continue
+            if drawers:
+                indexed += 1
+            else:
+                skipped += 1
+        return {
+            "indexed": indexed,
+            "skipped": skipped,
+            "failed": failed,
+            "failed_files": failed_files,
+        }
 
 
 def prune_registered_wings(

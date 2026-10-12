@@ -117,6 +117,27 @@ class TestHandleSync:
         assert result["synced"] == []
         assert [e["wing"] for e in result["errors"]] == ["bad-wing"]
 
+    def test_handle_sync_partial_when_files_failed(self, tmp_config, tmp_palace, mock_repo):
+        (mock_repo / "bad.py").write_text("x = 1\n")
+
+        def flaky(filepath, **kwargs):
+            if Path(filepath).name == "bad.py":
+                raise ValueError("cannot parse")
+            return 1, "general", None
+
+        with patch("src.sync_engine.process_file", side_effect=flaky):
+            result = handle_sync(config_path=str(tmp_config), data_path=str(tmp_palace))
+
+        assert result["status"] == "partial"
+        assert result["synced"] == ["test-wing"]
+        assert result["errors"] == []
+        assert result["failed"] == {
+            "test-wing": {
+                "count": 1,
+                "files": [{"file": "bad.py", "error": "ValueError: cannot parse"}],
+            }
+        }
+
 
 def test_second_sync_waits_for_first(tmp_config, tmp_palace, monkeypatch):
     import threading

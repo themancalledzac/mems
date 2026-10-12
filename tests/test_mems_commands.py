@@ -222,6 +222,41 @@ def test_sync_exits_nonzero_on_partial(monkeypatch, capsys):
     assert args["allow_large_prune"] is True
 
 
+def test_sync_prints_failed_files(monkeypatch, capsys):
+    result = {
+        "status": "partial",
+        "synced": ["a"],
+        "errors": [],
+        "prune": {"a": {"status": "ok"}},
+        "failed": {
+            "a": {"count": 2, "files": [{"file": "Dockerfile", "error": "ValueError: bad"}]}
+        },
+    }
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": result})
+
+    assert main(["sync"]) == 1
+    err = capsys.readouterr().err
+    assert "failed: a: 2 files" in err
+    assert "a: Dockerfile: ValueError: bad" in err
+
+
+def test_status_shows_failed_count(monkeypatch, capsys):
+    wings = {
+        "a-bad": {"status": "synced", "last_run": {"failed": 3}},
+        "b-good": {"status": "synced", "last_run": {"failed": 0}},
+    }
+    _install_fake_palace(monkeypatch, return_value={"structuredContent": {"wings": wings}})
+
+    assert main(["status"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+
+    def row(name):
+        return next(line for line in lines if line.startswith(name))
+
+    assert "synced, failed 3" in row("a-bad")
+    assert "failed" not in row("b-good")
+
+
 def test_sync_exits_zero_when_ok(monkeypatch, capsys):
     result = {"status": "ok", "synced": ["a"], "errors": [], "prune": {"a": {"status": "ok"}}}
     _install_fake_palace(monkeypatch, return_value={"structuredContent": result})

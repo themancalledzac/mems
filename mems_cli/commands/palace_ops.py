@@ -154,6 +154,13 @@ def _prune_cell(prune: dict | None) -> str:
     return status
 
 
+def _status_cell(entry: dict) -> str:
+    """The wing's status, with `, failed N` added when files failed to index last run."""
+    status = entry.get("status", "-")
+    failed = (entry.get("last_run") or {}).get("failed") or 0
+    return f"{status}, failed {failed}" if failed else status
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     data, code = _call("memory_sync_status")
     if code != EXIT_OK:
@@ -174,7 +181,7 @@ def cmd_status(args: argparse.Namespace) -> int:
                 name,
                 entry.get("last_sync_ts", "-"),
                 entry.get("files_indexed", "-"),
-                entry.get("status", "-"),
+                _status_cell(entry),
                 _prune_cell(entry.get("prune")),
             )
         )
@@ -183,13 +190,17 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def _report_sync(data) -> int:
-    """Print a sync result, with errors and bad prunes on stderr. Returns the exit code."""
+    """Print a sync result and its problems (errors, failed files, bad prunes) on stderr."""
     print_json(data)
     data = data if isinstance(data, dict) else {}
     for err in data.get("errors") or []:
         print(f"error: {err.get('wing')}: {err.get('error')}", file=sys.stderr)
     if data.get("message"):
         print(f"error: {data['message']}", file=sys.stderr)
+    for wing, failure in (data.get("failed") or {}).items():
+        print(f"failed: {wing}: {failure.get('count', 0)} files", file=sys.stderr)
+        for item in failure.get("files") or []:
+            print(f"  {wing}: {item.get('file')}: {item.get('error')}", file=sys.stderr)
     for wing, prune in (data.get("prune") or {}).items():
         if prune.get("status") in ("blocked", "error"):
             print(

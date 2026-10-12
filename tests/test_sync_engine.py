@@ -691,7 +691,13 @@ class TestReconcile:
         assert entry["prune"]["status"] == "ok"
         assert entry["prune"]["removed"] == 1
         assert entry["prune"]["ts"]
-        assert entry["last_run"] == {"indexed": 1, "skipped": 0, "removed": 1}
+        assert entry["last_run"] == {
+            "indexed": 1,
+            "skipped": 0,
+            "removed": 1,
+            "failed": 0,
+            "failed_files": [],
+        }
         assert _sources(tmp_palace) == ["a.md"]
 
     def test_sync_never_invokes_mempalace_cli(self, reconcile_env, monkeypatch):
@@ -797,7 +803,13 @@ class TestReconcile:
         assert engine().incremental_sync() == ["w"]
         assert _sources(tmp_palace) == ["a.md", "notes.md"]
         entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
-        assert entry["last_run"] == {"indexed": 1, "skipped": 1, "removed": 0}
+        assert entry["last_run"] == {
+            "indexed": 1,
+            "skipped": 1,
+            "removed": 0,
+            "failed": 0,
+            "failed_files": [],
+        }
 
     def test_incremental_runs_when_last_prune_not_ok(self, reconcile_env, tmp_palace):
         repo, _, engine = reconcile_env
@@ -899,6 +911,119 @@ class TestReconcile:
 
         assert len(seen) == 1
         assert seen[0] is not None
+
+    def test_one_bad_file_does_not_fail_wing(self, reconcile_env, tmp_palace, monkeypatch):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        (repo / "sub").mkdir()
+        (repo / "sub" / "bad.md").write_text("bad")
+        (repo / "c.md").write_text("gamma")
+        _commit_all(repo)
+
+        def flaky(filepath, **kwargs):
+            if Path(filepath).name == "bad.md":
+                raise ValueError("x" * 500)
+            return _fake_process_file(filepath, **kwargs)
+
+        monkeypatch.setattr("src.sync_engine.process_file", flaky)
+        engine().full_sync()
+
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["status"] == "synced"
+        assert entry["last_commit_sha"] == get_head_sha(str(repo))
+        assert entry["last_run"]["indexed"] == 2
+        assert entry["last_run"]["failed"] == 1
+        [failure] = entry["last_run"]["failed_files"]
+        assert failure["file"] == "sub/bad.md"
+        assert failure["error"].startswith("ValueError: xxx")
+        assert len(failure["error"]) == 200
+        assert _sources(tmp_palace) == ["a.md", "c.md"]
+
+    def test_failed_files_list_is_capped(self, reconcile_env, tmp_palace, monkeypatch):
+        repo, _, engine = reconcile_env
+        (repo / "ok.md").write_text("fine")
+        for i in range(30):
+            (repo / f"bad{i:02}.md").write_text("bad")
+        _commit_all(repo)
+
+        def flaky(filepath, **kwargs):
+            if Path(filepath).name.startswith("bad"):
+                raise RuntimeError("nope")
+            return _fake_process_file(filepath, **kwargs)
+
+        monkeypatch.setattr("src.sync_engine.list_indexable_files", _ok_first(list_indexable_files))
+        monkeypatch.setattr("src.sync_engine.process_file", flaky)
+        engine().full_sync()
+
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["status"] == "synced"
+        assert entry["last_run"]["failed"] == 30
+        assert len(entry["last_run"]["failed_files"]) == 20
+        assert _sources(tmp_palace) == ["ok.md"]
+
+    def test_all_files_failing_marks_wing_error(self, reconcile_env, tmp_palace, monkeypatch):
+        repo, _, engine = reconcile_env
+        for i in range(30):
+            (repo / f"f{i:02}.md").write_text("x")
+        _commit_all(repo)
+        attempts = []
+
+        def broken(filepath, **kwargs):
+            attempts.append(filepath)
+            raise ConnectionError("collection is gone")
+
+        monkeypatch.setattr("src.sync_engine.process_file", broken)
+        engine().full_sync()
+
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["status"] == "error"
+        assert "ConnectionError: collection is gone" in entry["error"]
+        assert len(attempts) == 25
+
+    def test_few_files_all_failing_keeps_wing_synced(self, reconcile_env, tmp_palace, monkeypatch):
+        repo, _, engine = reconcile_env
+        (repo / "only.md").write_text("x")
+        _commit_all(repo)
+
+        def broken(filepath, **kwargs):
+            raise ValueError("bad file")
+
+        monkeypatch.setattr("src.sync_engine.process_file", broken)
+        engine().full_sync()
+
+        entry = SyncLedger(tmp_palace / "sync_ledger.json").get("w")
+        assert entry["status"] == "synced"
+        assert entry["last_run"]["failed"] == 1
+
+    def test_incremental_retries_wing_with_failed_files(
+        self, reconcile_env, tmp_palace, monkeypatch
+    ):
+        repo, _, engine = reconcile_env
+        (repo / "a.md").write_text("alpha")
+        (repo / "b.md").write_text("beta")
+        _commit_all(repo)
+
+        def flaky(filepath, **kwargs):
+            if Path(filepath).name == "b.md":
+                raise ValueError("transient")
+            return _fake_process_file(filepath, **kwargs)
+
+        monkeypatch.setattr("src.sync_engine.process_file", flaky)
+        engine().full_sync()
+        monkeypatch.setattr("src.sync_engine.process_file", _fake_process_file)
+
+        assert engine().incremental_sync() == ["w"]
+        assert _sources(tmp_palace) == ["a.md", "b.md"]
+        assert SyncLedger(tmp_palace / "sync_ledger.json").get("w")["last_run"]["failed"] == 0
+
+
+def _ok_first(real_list):
+    """Wrap list_indexable_files so `ok.md` is processed first."""
+
+    def ordered(repo_path, sync_cfg):
+        return sorted(real_list(repo_path, sync_cfg), key=lambda p: p.name != "ok.md")
+
+    return ordered
 
 
 @pytest.fixture

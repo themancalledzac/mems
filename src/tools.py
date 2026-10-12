@@ -85,7 +85,8 @@ def handle_sync(
 ) -> dict:
     """Sync repos into the palace and report only the wings this run touched.
 
-    Status is `partial` when any wing errored or any prune was `error` or `blocked`.
+    Status is `partial` when a wing errored, a file failed to index (listed per wing under
+    `failed`), or a prune was `error` or `blocked`.
     Runs one at a time per process, since each run rewrites the ledger and the collection.
     """
     with _SYNC_LOCK:
@@ -108,6 +109,7 @@ def _sync_locked(
     synced: list[str] = []
     errors: list[dict] = []
     prune: dict[str, dict] = {}
+    failed: dict[str, dict] = {}
     for name in touched:
         entry = engine.ledger.get(name) or {}
         if entry.get("status") == "synced":
@@ -116,10 +118,19 @@ def _sync_locked(
             errors.append({"wing": name, "error": entry.get("error", "unknown")})
         if entry.get("prune"):
             prune[name] = entry["prune"]
+        run = entry.get("last_run") or {}
+        if run.get("failed"):
+            failed[name] = {"count": run["failed"], "files": run.get("failed_files") or []}
 
     bad_prune = any(r.get("status") in ("error", "blocked") for r in prune.values())
-    status = "partial" if errors or bad_prune else "ok"
-    return {"status": status, "synced": synced, "errors": errors, "prune": prune}
+    status = "partial" if errors or bad_prune or failed else "ok"
+    return {
+        "status": status,
+        "synced": synced,
+        "errors": errors,
+        "prune": prune,
+        "failed": failed,
+    }
 
 
 def handle_sync_status(config_path: str, data_path: str) -> dict:
