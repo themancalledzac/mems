@@ -180,6 +180,10 @@ ok "Docker image built"
 # --- 5. first boot + health poll ---
 say ""
 info "Starting container..."
+if ! docker volume inspect memory_mempalace-data >/dev/null 2>&1; then
+    docker volume create memory_mempalace-data >/dev/null || { fail "docker volume create failed"; exit 1; }
+    ok "created palace volume memory_mempalace-data"
+fi
 if ! (cd "$REPO_ROOT" && docker compose up -d); then
     fail "docker compose up -d failed"
     exit 1

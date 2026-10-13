@@ -152,6 +152,10 @@ else is required on the host except Docker and Python for the CLI.
 
 - `mempalace-data:/data` — named volume holding `palace/`, `exports/`,
   `sync_ledger.json`, and `exports/wing_user_backups/`.
+  `docker-compose.yml` pins the project name to `memory` and the volume to
+  the external volume `memory_mempalace-data`, so the palace survives a
+  rename of the repo folder. `scripts/setup.sh` creates the volume on a
+  fresh install; by hand, run `docker volume create memory_mempalace-data`.
 - `./config:/config:ro` — your taxonomy + `repos.json` (read-only inside).
   `repos.json` is gitignored; copy `config/repos.example.json` to start one.
 - `~/Code/<repo>:/repos/<repo>:ro` — one bind-mount per wing you want
@@ -179,8 +183,7 @@ else is required on the host except Docker and Python for the CLI.
 docker compose up -d --build      # build + start
 docker compose logs -f mempalace  # follow logs
 docker compose restart mempalace  # restart without rebuild
-docker compose down               # stop (volumes kept)
-docker compose down -v            # stop + wipe palace volume (wing_user restores)
+docker compose down               # stop (the palace volume is external, so even -v keeps it)
 ```
 
 ## Disaster recovery
@@ -194,10 +197,9 @@ holds the user's personal context. Every container boot runs, in order:
 2. `src/restore_wing_user.py` — if the `wing_user` collection is empty,
    replays the newest snapshot with deterministic drawer IDs.
 
-You can test it end-to-end: `docker compose down -v && docker compose up -d`
-— the wing_user drawers should reappear on boot from the newest snapshot.
-Snapshots live inside the named volume, so they survive container
-rebuilds; they are wiped only by `docker compose down -v`.
+Snapshots live inside the palace volume, so they survive container
+rebuilds and `docker compose down -v`. Only
+`docker volume rm memory_mempalace-data` deletes them.
 
 ## Claude Code Setup
 
